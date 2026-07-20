@@ -45,8 +45,8 @@ void UBTService_SearchTarget::TickNode(UBehaviorTreeComponent& OwnerComp, uint8*
 	{
 		BlackboardComp->SetValueAsObject(GetSelectedBlackboardKey(), FoundCharacter);
 	}
-	/*else
+	else
 	{
 		BlackboardComp->ClearValue(GetSelectedBlackboardKey());
-	}*/
+	}
 }
