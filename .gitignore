@@ -74,8 +74,5 @@ Plugins/**/Intermediate/*
 # Cache files for the editor to use
 DerivedDataCache/*
 
-# Local-only large asset packs
-Content/Scifi_desert_city/
-Content/Sci_FI_Valley_Village/
-Content/ParagonIggyScorch/
-Content/ParagonGrux/
+# Content is managed outside of git (too large)
+Content/
