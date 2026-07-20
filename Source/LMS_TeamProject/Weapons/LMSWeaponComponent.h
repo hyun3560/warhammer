@@ -93,6 +93,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	ACharacter* GetOwnerCharacter() const;
 	UCameraComponent* GetOwnerCameraComponent() const;
@@ -111,6 +112,20 @@ protected:
 	void BroadcastAmmoChanged();
 	void UpdateSkillCooldown();
 	void BroadcastSkillCooldownChanged(float CurrentCooldown, float MaxCooldown);
+	void CacheWeaponDataByID(FName WeaponID);
+	void RestartReplicatedSkillCooldownTimer();
+
+	UFUNCTION()
+	void OnRep_EquippedWeaponID();
+
+	UFUNCTION()
+	void OnRep_CurrentWeapon();
+
+	UFUNCTION()
+	void OnRep_Ammo();
+
+	UFUNCTION()
+	void OnRep_SkillCooldown();
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	UDataTable* WeaponDataTable;
@@ -136,16 +151,19 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Debug")
 	bool bDrawDebugRangedTrace = true;
 
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentWeapon, VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
 	ALMSWeaponBase* CurrentWeapon;
 
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
 	FWeaponData CurrentWeaponData;
 
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|Ammo")
+	UPROPERTY(ReplicatedUsing = OnRep_EquippedWeaponID, VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
+	FName EquippedWeaponID = NAME_None;
+
+	UPROPERTY(ReplicatedUsing = OnRep_Ammo, VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|Ammo")
 	int32 AmmoInMagazine = 0;
 
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|Ammo")
+	UPROPERTY(ReplicatedUsing = OnRep_Ammo, VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|Ammo")
 	int32 ReserveAmmo = 0;
 
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|Ammo")
@@ -163,6 +181,9 @@ protected:
 	FTimerHandle ReloadTimerHandle;
 	FTimerHandle SkillCooldownTimerHandle;
 
+	UPROPERTY(ReplicatedUsing = OnRep_SkillCooldown)
 	float SkillCooldownEndTime = 0.f;
+
+	UPROPERTY(ReplicatedUsing = OnRep_SkillCooldown)
 	float SkillCooldownDuration = 0.f;
 };
