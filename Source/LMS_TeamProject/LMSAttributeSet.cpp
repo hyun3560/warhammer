@@ -103,6 +103,12 @@ void ULMSAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 			OnIncapHealthZero.Broadcast(Data);
 	}
 
+	else if (Data.EvaluatedData.Attribute == GetStaminaAttribute())
+	{
+		SetStamina(FMath::Clamp(GetStamina(), 0.f, GetMaxStamina()));
+	}
+
+
 
 	else if (Data.EvaluatedData.Attribute == GetDamageAttribute()) //쉴드 로직
 	{

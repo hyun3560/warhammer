@@ -1,4 +1,4 @@
-#include "IndicatorOverlayWidget.h"
+﻿#include "IndicatorOverlayWidget.h"
 #include "IndicatorEntryWidget.h"
 #include "IndicatorManagerComponent.h"
 #include "Components/CanvasPanel.h"
@@ -21,41 +21,18 @@ void UIndicatorOverlayWidget::NativeTick(const FGeometry& MyGeometry, float InDe
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
-	static float DebugLogTimer = 0.f;
-	DebugLogTimer += InDeltaTime;
-	const bool bShouldLog = DebugLogTimer >= 1.f;
-	if (bShouldLog)
-	{
-		DebugLogTimer = 0.f;
-	}
-
 	if (!RootCanvas || !IndicatorEntryClass)
 	{
-		if (bShouldLog)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[Indicator] NativeTick abort on %s: RootCanvas=%s, IndicatorEntryClass=%s"),
-				*GetClass()->GetName(),
-				RootCanvas ? TEXT("OK") : TEXT("NULL"), IndicatorEntryClass ? TEXT("OK") : TEXT("NULL"));
-		}
 		return;
 	}
 
 	UIndicatorManagerComponent* IndicatorManager = FindIndicatorManager();
 	if (!IndicatorManager)
 	{
-		if (bShouldLog)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[Indicator] NativeTick abort: IndicatorManager NOT FOUND (OwningPlayer=%s)"),
-				GetOwningPlayer() ? *GetOwningPlayer()->GetName() : TEXT("NULL"));
-		}
 		return;
 	}
 
 	const TArray<FLMSIndicatorScreenData>& IndicatorDataList = IndicatorManager->GetIndicatorDataList();
-	if (bShouldLog)
-	{
-		UE_LOG(LogTemp, Log, TEXT("[Indicator] IndicatorDataList.Num()=%d, EntryPool.Num()=%d"), IndicatorDataList.Num(), EntryPool.Num());
-	}
 
 	// 필요한 만큼 풀을 확장합니다 (이미 있는 엔트리는 재사용).
 	while (EntryPool.Num() < IndicatorDataList.Num())
@@ -65,7 +42,6 @@ void UIndicatorOverlayWidget::NativeTick(const FGeometry& MyGeometry, float InDe
 		{
 			break;
 		}
-
 		if (UCanvasPanelSlot* NewSlot = RootCanvas->AddChildToCanvas(NewEntry))
 		{
 			// 아이콘 중심이 계산된 스크린 좌표에 오도록 정렬 기준점을 중앙으로 맞춥니다.
@@ -81,7 +57,6 @@ void UIndicatorOverlayWidget::NativeTick(const FGeometry& MyGeometry, float InDe
 		{
 			continue;
 		}
-
 		if (Index >= IndicatorDataList.Num())
 		{
 			// 이번 프레임엔 쓰이지 않는 엔트리는 숨겨서 재사용을 대기합니다.
