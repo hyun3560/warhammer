@@ -55,7 +55,7 @@ void AHit_Box::BoxTraceHit(float Distance, FVector Size, float Damage)
 		{
 			if (ALMS_TeamProjectCharacter* Character = Cast<ALMS_TeamProjectCharacter>(result.GetActor()))
 			{
-				Character->TakeDamage(Damage);
+				Character->TakeDamageFromOrigin(Damage, OwnerActor ? OwnerActor->GetActorLocation() : result.ImpactPoint);
 				UE_LOG(LogTemp, Log, TEXT("%f"), Damage);
 				break;
 			}
