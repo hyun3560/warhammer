@@ -499,7 +499,14 @@ void ULMSWeaponComponent::StartRangedAttack()
 		return;
 	}
 
-	FireRangedShot(1.f, 1.f, bDrawDebugRangedTrace);
+	if (CurrentWeaponData.ProjectileClass)
+	{
+		SpawnProjectile();
+	}
+	else
+	{
+		FireRangedShot(1.f, 1.f, bDrawDebugRangedTrace);
+	}
 
 	UE_LOG(
 		LogTemp,
@@ -641,6 +648,45 @@ void ULMSWeaponComponent::FireRangedShot(float DamageMultiplier, float RangeMult
 			DrawDebugSphere(World, Hit.ImpactPoint, 12.f, 8, FColor::Yellow, false, 1.5f);
 		}
 	}
+}
+
+AActor* ULMSWeaponComponent::SpawnProjectile()
+{
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	UWorld* World = GetWorld();
+	if (!OwnerCharacter || !World || !CurrentWeaponData.ProjectileClass)
+	{
+		return nullptr;
+	}
+
+	if (!OwnerCharacter->HasAuthority())
+	{
+		return nullptr;
+	}
+
+	const FTransform AttackOrigin = CurrentWeapon ? CurrentWeapon->GetAttackOriginTransform() : FTransform::Identity;
+	const FVector SpawnLocation = CurrentWeapon ? AttackOrigin.GetLocation() : OwnerCharacter->GetPawnViewLocation();
+	const FRotator SpawnRotation = OwnerCharacter->GetControlRotation();
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = OwnerCharacter;
+	SpawnParams.Instigator = OwnerCharacter;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	AActor* Projectile = World->SpawnActor<AActor>(
+		CurrentWeaponData.ProjectileClass,
+		SpawnLocation,
+		SpawnRotation,
+		SpawnParams);
+
+	UE_LOG(
+		LogTemp,
+		Log,
+		TEXT("Spawned projectile: %s Weapon=%s"),
+		*GetNameSafe(Projectile),
+		*CurrentWeaponData.WeaponID.ToString());
+
+	return Projectile;
 }
 
 void ULMSWeaponComponent::StartBlock()

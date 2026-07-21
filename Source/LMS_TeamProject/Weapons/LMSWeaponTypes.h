@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
@@ -55,6 +55,10 @@ struct FWeaponData : public FTableRowBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Ranged")
 	float ReloadTime = 1.5f;
+
+	/** 설정하면 FireRangedShot의 라인트레이스 대신 이 액터를 Muzzle 소켓에서 스폰해 발사합니다. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Ranged")
+	TSubclassOf<AActor> ProjectileClass;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|GAS")
 	TSubclassOf<UGameplayAbility> WeaponSkill;

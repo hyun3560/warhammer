@@ -91,6 +91,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Ranged")
 	void FireRangedShot(float DamageMultiplier, float RangeMultiplier, bool bDrawDebugTrace);
 
+	/** CurrentWeaponData.ProjectileClass를 Muzzle 소켓 위치/방향으로 스폰합니다. 서버 권한에서만 실제로 스폰됩니다. */
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Ranged")
+	AActor* SpawnProjectile();
+
 protected:
 	virtual void BeginPlay() override;
 
