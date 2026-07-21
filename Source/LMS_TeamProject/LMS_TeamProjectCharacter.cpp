@@ -146,6 +146,8 @@ void ALMS_TeamProjectCharacter::InitAbilityActorInfo()
 	if (HasAuthority() && AttributeSet)
 	{
 		// 중복 방지 — 기존 바인딩 제거 후 재바인딩
+		AttributeSet->OnDamaged.RemoveAll(this);
+		AttributeSet->OnDamaged.AddUObject(this, &ALMS_TeamProjectCharacter::HandleDamaged);
 		AttributeSet->OnHealthZero.RemoveAll(this);
 		AttributeSet->OnHealthZero.AddUObject(this, &ALMS_TeamProjectCharacter::HandleHealthZero);
 		AttributeSet->OnIncapHealthZero.RemoveAll(this);
@@ -283,6 +285,16 @@ void ALMS_TeamProjectCharacter::TakeDamage(float Damage)
 		*GetName(), Damage, AttributeSet ? AttributeSet->GetHealth() : 0.f);
 }
 
+void ALMS_TeamProjectCharacter::HandleDamaged(const FGameplayEffectModCallbackData& Data)
+{
+	if (!HasAuthority() || !HealBlockEffect) return;
+	// GE_HealBlock 적용 → state.Heal.Block 태그
+	FGameplayEffectContextHandle Context = AbilitySystemComponent->MakeEffectContext();
+	FGameplayEffectSpecHandle Spec = AbilitySystemComponent->MakeOutgoingSpec(HealBlockEffect, 1.f, Context);
+	if (Spec.IsValid())
+		AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*Spec.Data.Get());
+}
+
 void ALMS_TeamProjectCharacter::HandleHealthZero(const FGameplayEffectModCallbackData& Data)
 {
 	if (!HasAuthority() || !AbilitySystemComponent || !IncapacitatedEffect)
@@ -350,7 +362,7 @@ void ALMS_TeamProjectCharacter::HandleIncapHealthZero(const FGameplayEffectModCa
 void ALMS_TeamProjectCharacter::CheckCoherency()
 {
 
-	if (!HasAuthority() || !AbilitySystemComponent || !ShieldEffect)
+	if (!HasAuthority() || !AbilitySystemComponent || !HealEffect)
 	{
 		return;
 	}
@@ -359,7 +371,7 @@ void ALMS_TeamProjectCharacter::CheckCoherency()
 		FGameplayTag::RequestGameplayTag(FName("state.Incapacitated"));
 
 	static const FGameplayTag ShieldTag =
-		FGameplayTag::RequestGameplayTag(FName("Data.Shield"));
+		FGameplayTag::RequestGameplayTag(FName("Data.Heal"));
 
 	int32 NearbyCount = 0;
 
@@ -396,20 +408,20 @@ void ALMS_TeamProjectCharacter::CheckCoherency()
 		FGameplayEffectContextHandle Context = AbilitySystemComponent->MakeEffectContext();
 		Context.AddSourceObject(this);
 
-		FGameplayEffectSpecHandle ShieldSpec =
-			AbilitySystemComponent->MakeOutgoingSpec(ShieldEffect, 1.f, Context);
+		FGameplayEffectSpecHandle HealSpec =
+			AbilitySystemComponent->MakeOutgoingSpec(HealEffect, 1.f, Context);
 
 		
 
 
-		ShieldSpec.Data->SetSetByCallerMagnitude(
+		HealSpec.Data->SetSetByCallerMagnitude(
 			ShieldTag,
 			NearbyCount * 3
 		);
 
-		if (ShieldSpec.IsValid())
+		if (HealSpec.IsValid())
 		{
-			AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*ShieldSpec.Data.Get());
+			AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*HealSpec.Data.Get());
 
 		}
 	}

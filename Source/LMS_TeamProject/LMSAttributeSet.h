@@ -25,6 +25,9 @@ class LMS_TEAMPROJECT_API ULMSAttributeSet : public UAttributeSet
 public:
 	ULMSAttributeSet();
 
+	//데미지 입을 때 호출할 델리게이트(서버용)
+	FOnAttributeZero OnDamaged;
+
 	//체력 0이 될 때 호출할 델리게이트(서버용)
 	FOnAttributeZero OnHealthZero;
 
@@ -79,9 +82,13 @@ public:
 	FGameplayAttributeData MaxIncapHealth;
 	ATTRIBUTE_ACCESSORS(ULMSAttributeSet, MaxIncapHealth)
 
-		UPROPERTY(BlueprintReadOnly, Category = "Attributes")
+	UPROPERTY(BlueprintReadOnly, Category = "Attributes")
 	FGameplayAttributeData Damage;
 	ATTRIBUTE_ACCESSORS(ULMSAttributeSet, Damage)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Heal", meta = (AllowPrivateAccess = true))
+	FGameplayAttributeData Heal;
+	ATTRIBUTE_ACCESSORS(ULMSAttributeSet, Heal)
 
 	//~ Begin UAttributeSet Interface
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;

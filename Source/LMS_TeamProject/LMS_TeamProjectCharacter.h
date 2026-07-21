@@ -43,7 +43,10 @@ class ALMS_TeamProjectCharacter : public ACharacter, public IAbilitySystemInterf
 	TArray<TSubclassOf<UGameplayEffect>> DefaultEffects;
 
 	UPROPERTY(EditDefaultsOnly, Category = Effects, meta = (AllowPrivateAccess = "true"))
-	TSubclassOf<UGameplayEffect> ShieldEffect;
+	TSubclassOf<UGameplayEffect> HealEffect;
+
+	UPROPERTY(EditDefaultsOnly, Category = Effects, meta = (AllowPrivateAccess = "true"))
+	TSubclassOf<UGameplayEffect> HealBlockEffect;
 
 	UPROPERTY(EditDefaultsOnly, Category = Effects, meta = (AllowPrivateAccess = "true"))
 	TSubclassOf<UGameplayEffect> IncapacitatedEffect;
@@ -155,6 +158,7 @@ protected:
 	void OnAbilityInputPressed(ELMSAbilityInputID InputID);
 	void OnAbilityInputReleased(ELMSAbilityInputID InputID);
 
+	void HandleDamaged(const FGameplayEffectModCallbackData& Data);
 	void HandleHealthZero(const FGameplayEffectModCallbackData& Data);
 	void HandleIncapHealthZero(const FGameplayEffectModCallbackData& Data);
 
