@@ -33,6 +33,9 @@ struct FWeaponData : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
 	TSubclassOf<ALMSWeaponBase> WeaponClass;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|First Person")
+	TSubclassOf<ALMSWeaponBase> FirstPersonWeaponClass;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|HUD")
 	UTexture2D* HUDIcon = nullptr;
 

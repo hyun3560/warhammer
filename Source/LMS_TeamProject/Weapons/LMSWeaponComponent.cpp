@@ -73,7 +73,7 @@ bool ULMSWeaponComponent::EquipWeaponFromData(const FWeaponData& WeaponData)
 			}
 			else
 			{
-				FirstPersonWeapon = SpawnWeaponActor(WeaponData);
+				FirstPersonWeapon = SpawnWeaponActor(WeaponData, WeaponData.FirstPersonWeaponClass);
 				if (FirstPersonWeapon)
 				{
 					FirstPersonWeapon->SetReplicates(false);
@@ -504,11 +504,12 @@ UAbilitySystemComponent* ULMSWeaponComponent::GetOwnerAbilitySystemComponent() c
 	return AbilitySystemOwner ? AbilitySystemOwner->GetAbilitySystemComponent() : nullptr;
 }
 
-ALMSWeaponBase* ULMSWeaponComponent::SpawnWeaponActor(const FWeaponData& WeaponData) const
+ALMSWeaponBase* ULMSWeaponComponent::SpawnWeaponActor(const FWeaponData& WeaponData, TSubclassOf<ALMSWeaponBase> OverrideWeaponClass) const
 {
 	ACharacter* OwnerCharacter = GetOwnerCharacter();
 	UWorld* World = GetWorld();
-	if (!OwnerCharacter || !World || !WeaponData.WeaponClass)
+	TSubclassOf<ALMSWeaponBase> WeaponClassToSpawn = OverrideWeaponClass ? OverrideWeaponClass : WeaponData.WeaponClass;
+	if (!OwnerCharacter || !World || !WeaponClassToSpawn)
 	{
 		return nullptr;
 	}
@@ -517,7 +518,7 @@ ALMSWeaponBase* ULMSWeaponComponent::SpawnWeaponActor(const FWeaponData& WeaponD
 	SpawnParams.Owner = OwnerCharacter;
 	SpawnParams.Instigator = OwnerCharacter;
 
-	return World->SpawnActor<ALMSWeaponBase>(WeaponData.WeaponClass, SpawnParams);
+	return World->SpawnActor<ALMSWeaponBase>(WeaponClassToSpawn, SpawnParams);
 }
 
 USceneComponent* ULMSWeaponComponent::FindFirstPersonWeaponAttachComponent() const
