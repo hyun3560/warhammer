@@ -7,6 +7,7 @@
 class ALMSWeaponBase;
 class UGameplayAbility;
 class UGameplayEffect;
+class UTexture2D;
 
 UENUM(BlueprintType)
 enum class ELMSWeaponType : uint8
@@ -31,6 +32,12 @@ struct FWeaponData : public FTableRowBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
 	TSubclassOf<ALMSWeaponBase> WeaponClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|HUD")
+	UTexture2D* HUDIcon = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|HUD")
+	bool bShowAmmoOnHUD = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
 	float Damage = 10.f;
