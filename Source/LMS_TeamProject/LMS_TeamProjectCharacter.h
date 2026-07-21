@@ -122,6 +122,12 @@ class ALMS_TeamProjectCharacter : public ACharacter, public IAbilitySystemInterf
 	UPROPERTY(EditDefaultsOnly, Category = "Revive")
 	float ReviveTraceDistance = 250.f;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Block", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float BlockDamageMultiplier = 0.2f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Block", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
+	float BlockFacingDotThreshold = 0.5f;
+
 public:
 	ALMS_TeamProjectCharacter();
 
@@ -177,6 +183,9 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void TakeDamage(float Damage);
 
+	UFUNCTION(BlueprintCallable)
+	void TakeDamageFromOrigin(float Damage, FVector DamageOrigin);
+
 public:
 	/** Returns CameraBoom subobject **/
 	FORCEINLINE class USpringArmComponent* GetCameraBoom() const { return CameraBoom; }
@@ -189,5 +198,8 @@ public:
 	TObjectPtr<AActor> GetCurrentReviveTarget() const { return CurrentReviveTarget; }
 
 	void TraceForReviveTarget();
+
+private:
+	bool IsDamageBlockedFromOrigin(const FVector& DamageOrigin) const;
 };
 

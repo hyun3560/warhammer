@@ -7,6 +7,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/Controller.h"
+#include "Kismet/KismetMathLibrary.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
@@ -261,18 +262,48 @@ void ALMS_TeamProjectCharacter::OnAbilityInputReleased(ELMSAbilityInputID InputI
 
 void ALMS_TeamProjectCharacter::TakeDamage(float Damage)
 {
+	TakeDamageFromOrigin(Damage, GetActorLocation() - GetActorForwardVector());
+}
+
+void ALMS_TeamProjectCharacter::TakeDamageFromOrigin(float Damage, FVector DamageOrigin)
+{
 	if (!HasAuthority() || !AbilitySystemComponent)
 	{
 		return;
 	}
 
+	float FinalDamage = Damage;
+	if (IsDamageBlockedFromOrigin(DamageOrigin))
+	{
+		FinalDamage *= BlockDamageMultiplier;
+	}
+
 	AbilitySystemComponent->ApplyModToAttribute(
 		ULMSAttributeSet::GetHealthAttribute(),
 		EGameplayModOp::Additive,
-		-Damage);
+		-FinalDamage);
 
-	UE_LOG(LogTemplateCharacter, Log, TEXT("%s took %.1f damage, remaining Health = %.1f"),
-		*GetName(), Damage, AttributeSet ? AttributeSet->GetHealth() : 0.f);
+	UE_LOG(LogTemplateCharacter, Log, TEXT("%s took %.1f damage (raw %.1f), remaining Health = %.1f"),
+		*GetName(), FinalDamage, Damage, AttributeSet ? AttributeSet->GetHealth() : 0.f);
+}
+
+bool ALMS_TeamProjectCharacter::IsDamageBlockedFromOrigin(const FVector& DamageOrigin) const
+{
+	if (!WeaponComponent || !WeaponComponent->IsBlocking())
+	{
+		return false;
+	}
+
+	const FVector ToDamageOrigin = (DamageOrigin - GetActorLocation()).GetSafeNormal2D();
+	if (ToDamageOrigin.IsNearlyZero())
+	{
+		return false;
+	}
+
+	const FRotator FacingRotation = Controller ? Controller->GetControlRotation() : GetActorRotation();
+	const FVector Forward = UKismetMathLibrary::GetForwardVector(FacingRotation).GetSafeNormal2D();
+	const float FacingDot = FVector::DotProduct(Forward, ToDamageOrigin);
+	return FacingDot >= BlockFacingDotThreshold;
 }
 
 void ALMS_TeamProjectCharacter::HandleHealthZero(const FGameplayEffectModCallbackData& Data)

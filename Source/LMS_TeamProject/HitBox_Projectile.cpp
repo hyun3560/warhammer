@@ -86,7 +86,7 @@ void AHitBox_Projectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
 		// todo : TakeDamage
 		if (Target)
 		{
-			Target->TakeDamage(Damage);
+			Target->TakeDamageFromOrigin(Damage, GetActorLocation());
 			Destroy();
 		}
 	}
