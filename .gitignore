@@ -81,5 +81,12 @@ Content/ParagonIggyScorch/
 Content/ParagonGrux/
 Content/Resources/
 Content/Resource/
+!Content/Resource/
+Content/Resource/*
+!Content/Resource/Scifi_desert_city/
+Content/Resource/Scifi_desert_city/*
+!Content/Resource/Scifi_desert_city/Level/
+Content/Resource/Scifi_desert_city/Level/*
+!Content/Resource/Scifi_desert_city/Level/L_showcase_level.umap
 Content/ParagonKwang/
 Content/ParagonSevarog/
