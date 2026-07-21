@@ -14,9 +14,11 @@ class UAnimMontage;
 class UCameraComponent;
 class UDataTable;
 class USceneComponent;
+class UTexture2D;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnWeaponAmmoChanged, int32, AmmoInMagazine, int32, ReserveAmmo);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnWeaponSkillCooldownChanged, float, CurrentCooldown, float, MaxCooldown);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnWeaponHUDChanged, UTexture2D*, WeaponIcon, bool, bShowAmmo);
 
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class LMS_TEAMPROJECT_API ULMSWeaponComponent : public UActorComponent
@@ -77,11 +79,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	bool IsAiming() const { return bIsAiming; }
 
+	UFUNCTION(BlueprintPure, Category = "Weapon|HUD")
+	UTexture2D* GetCurrentWeaponHUDIcon() const { return ResolveWeaponHUDIcon(); }
+
+	UFUNCTION(BlueprintPure, Category = "Weapon|HUD")
+	bool ShouldDisplayAmmoOnHUD() const { return ShouldShowAmmoOnHUD(); }
+
 	UPROPERTY(BlueprintAssignable, Category = "Weapon|Ammo")
 	FOnWeaponAmmoChanged OnAmmoChanged;
 
 	UPROPERTY(BlueprintAssignable, Category = "Weapon|Skill")
 	FOnWeaponSkillCooldownChanged OnSkillCooldownChanged;
+
+	UPROPERTY(BlueprintAssignable, Category = "Weapon|HUD")
+	FOnWeaponHUDChanged OnWeaponHUDChanged;
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Ammo")
 	bool TryConsumeAmmo(int32 AmmoCost = 1, bool bReloadIfEmpty = true);
@@ -170,9 +181,12 @@ protected:
 	void FinishReload();
 	void ClearMeleeDamageBoost();
 	void BroadcastAmmoChanged();
+	void BroadcastWeaponHUDChanged();
 	void UpdateSkillCooldown();
 	void BroadcastSkillCooldownChanged(float CurrentCooldown, float MaxCooldown);
 	void CacheWeaponDataByID(FName WeaponID);
+	UTexture2D* ResolveWeaponHUDIcon() const;
+	bool ShouldShowAmmoOnHUD() const;
 	void RestartReplicatedSkillCooldownTimer();
 	ALMSWeaponBase* GetWeaponTraceActor() const;
 	bool GetWeaponTraceSocketLocations(FVector& OutStart, FVector& OutEnd) const;

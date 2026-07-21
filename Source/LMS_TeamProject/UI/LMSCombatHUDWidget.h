@@ -6,6 +6,8 @@
 #include "Blueprint/UserWidget.h"
 #include "LMSCombatHUDWidget.generated.h"
 
+class UTexture2D;
+
 /**
  * 
  */
@@ -44,6 +46,9 @@ public:
 	// 실제 ProgressBar/Text 갱신 로직은 WBP_LJH_CombatHUD 블루프린트에서 구현합니다.
 	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable, Category = "Combat HUD")
 	void SetAmmo(int32 CurrentAmmo, int32 ReserveAmmo);
+
+	UFUNCTION(BlueprintCallable, Category = "Combat HUD")
+	void SetWeaponInfo(UTexture2D* WeaponIcon, bool bShowAmmo);
 
 	// SetInteractionPrompt는 표시 내용을 받는 문
 	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable, Category = "Combat HUD")

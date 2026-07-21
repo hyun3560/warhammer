@@ -9,6 +9,7 @@ class UAbilitySystemComponent;
 class ULMSAttributeSet;
 class ULMSCombatHUDWidget;
 class UUIManagerComponent;
+class UTexture2D;
 struct FOnAttributeChangeData;
 struct FGameplayTag;
 
@@ -115,6 +116,7 @@ private:
 
 	//탄약 보유량을 HUD에 전달합니다.
 	void UpdateAmmoUI(int32 CurrentAmmo, int32 ReserveAmmo) const;
+	void UpdateWeaponInfoUI(UTexture2D* WeaponIcon, bool bShowAmmo) const;
 
 	// PlayerController가 조종 중인 Pawn에서 무기 컴포넌트를 찾아 캐싱합니다.
 	// 탄약 UI는 PlayerState가 아니라 실제 캐릭터의 WeaponComponent 값을 사용합니다.
@@ -128,6 +130,9 @@ private:
 	// 받은 값을 그대로 HUD 블루프린트의 SetAmmo 이벤트로 전달합니다.
 	UFUNCTION()
 	void HandleAmmoChanged(int32 CurrentAmmo, int32 ReserveAmmo);
+
+	UFUNCTION()
+	void HandleWeaponHUDChanged(UTexture2D* WeaponIcon, bool bShowAmmo);
 
 	// 무기 컴포넌트에서 스킬 쿨타임 변경 알림을 받았을 때 호출됩니다.
 	// 받은 현재 쿨타임/전체 쿨타임 값을 HUD 블루프린트의 SetSkillCooldown 이벤트로 전달합니다.

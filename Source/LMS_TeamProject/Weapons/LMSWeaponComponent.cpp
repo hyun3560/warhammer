@@ -7,6 +7,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/DataTable.h"
+#include "Engine/Texture2D.h"
 #include "GameFramework/Character.h"
 #include "Kismet/GameplayStatics.h"
 #include "LMSWeaponBase.h"
@@ -98,6 +99,7 @@ bool ULMSWeaponComponent::EquipWeaponFromData(const FWeaponData& WeaponData)
 	bIsAiming = false;
 	ResetCombo();
 	BroadcastAmmoChanged();
+	BroadcastWeaponHUDChanged();
 
 	GrantCurrentWeaponAbilities();
 
@@ -180,6 +182,7 @@ void ULMSWeaponComponent::UnequipCurrentWeapon()
 	SkillCooldownEndTime = 0.f;
 	SkillCooldownDuration = 0.f;
 	BroadcastAmmoChanged();
+	BroadcastWeaponHUDChanged();
 	BroadcastSkillCooldownChanged(0.f, 0.f);
 }
 
@@ -305,6 +308,11 @@ void ULMSWeaponComponent::BroadcastAmmoChanged()
 	OnAmmoChanged.Broadcast(AmmoInMagazine, ReserveAmmo);
 }
 
+void ULMSWeaponComponent::BroadcastWeaponHUDChanged()
+{
+	OnWeaponHUDChanged.Broadcast(ResolveWeaponHUDIcon(), ShouldShowAmmoOnHUD());
+}
+
 void ULMSWeaponComponent::StartSkillCooldown(float CurrentCooldown, float MaxCooldown)
 {
 	UWorld* World = GetWorld();
@@ -396,6 +404,7 @@ void ULMSWeaponComponent::OnRep_EquippedWeaponID()
 	}
 
 	BroadcastAmmoChanged();
+	BroadcastWeaponHUDChanged();
 	BroadcastSkillCooldownChanged(0.f, 0.f);
 }
 
@@ -413,11 +422,40 @@ void ULMSWeaponComponent::OnRep_CurrentWeapon()
 	{
 		CurrentWeapon->Equip(OwnerCharacter, EquippedSocketName);
 	}
+
+	BroadcastWeaponHUDChanged();
 }
 
 void ULMSWeaponComponent::OnRep_Ammo()
 {
 	BroadcastAmmoChanged();
+}
+
+UTexture2D* ULMSWeaponComponent::ResolveWeaponHUDIcon() const
+{
+	if (CurrentWeaponData.HUDIcon)
+	{
+		return CurrentWeaponData.HUDIcon;
+	}
+
+	const FString WeaponIDString = CurrentWeaponData.WeaponID.ToString();
+	const TCHAR* FallbackPath = nullptr;
+
+	if (WeaponIDString.Equals(TEXT("Rifle"), ESearchCase::IgnoreCase))
+	{
+		FallbackPath = TEXT("/Game/LJH/Image/Gun.Gun");
+	}
+	else if (WeaponIDString.Equals(TEXT("Hammer"), ESearchCase::IgnoreCase))
+	{
+		FallbackPath = TEXT("/Game/LJH/Image/Hammer.Hammer");
+	}
+
+	return FallbackPath ? LoadObject<UTexture2D>(nullptr, FallbackPath) : nullptr;
+}
+
+bool ULMSWeaponComponent::ShouldShowAmmoOnHUD() const
+{
+	return CurrentWeaponData.bShowAmmoOnHUD || CurrentWeaponData.WeaponType == ELMSWeaponType::Ranged;
 }
 
 void ULMSWeaponComponent::OnRep_SkillCooldown()
