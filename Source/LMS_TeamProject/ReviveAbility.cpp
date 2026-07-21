@@ -3,12 +3,9 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "GameplayPrediction.h"
-#include "GameFramework/Pawn.h"
-#include "GameFramework/PlayerController.h"
 
 #include "AbilityTask_WaitReviveHold.h"
 #include "LMS_TeamProjectCharacter.h"
-#include "UI/LMSCombatHUDPresenterComponent.h"
 
 UReviveAbility::UReviveAbility()
 {
@@ -124,14 +121,7 @@ void UReviveAbility::StartRevive(AActor* Target)
 			this, ReviveTarget, ReviveDuration, MaxReviveDistance, 0.1f);
 	Task->OnCompleted.AddDynamic(this, &UReviveAbility::OnReviveCompleted);
 	Task->OnCancelled.AddDynamic(this, &UReviveAbility::OnReviveCancelled);
-	Task->OnProgress.AddDynamic(this, &UReviveAbility::HandleReviveProgress);
 	Task->ReadyForActivation();
-
-	if (ULMSCombatHUDPresenterComponent* CombatHUDPresenter = GetCombatHUDPresenter())
-	{
-		CombatHUDPresenter->ShowInteractionProgress();
-		CombatHUDPresenter->SetInteractionProgressValue(0.f);
-	}
 
 	// BeingRevived 부여 → 홀드 중 BleedOut 정지 (서버만, 결과성 GE)
 	if (K2_HasAuthority() && BeingRevivedEffect)
@@ -226,32 +216,6 @@ void UReviveAbility::OnReviveCancelled()
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
 }
 
-void UReviveAbility::HandleReviveProgress(float Progress)
-{
-	if (ULMSCombatHUDPresenterComponent* CombatHUDPresenter = GetCombatHUDPresenter())
-	{
-		CombatHUDPresenter->ShowInteractionProgress();
-		CombatHUDPresenter->SetInteractionProgressValue(Progress);
-	}
-}
-
-ULMSCombatHUDPresenterComponent* UReviveAbility::GetCombatHUDPresenter() const
-{
-	APawn* Pawn = Cast<APawn>(GetAvatarActorFromActorInfo());
-	if (!Pawn || !Pawn->IsLocallyControlled())
-	{
-		return nullptr;
-	}
-
-	APlayerController* PlayerController = Cast<APlayerController>(Pawn->GetController());
-	if (!PlayerController)
-	{
-		return nullptr;
-	}
-
-	return PlayerController->FindComponentByClass<ULMSCombatHUDPresenterComponent>();
-}
-
 void UReviveAbility::InputReleased(
 	const FGameplayAbilitySpecHandle Handle,
 	const FGameplayAbilityActorInfo* ActorInfo,
@@ -271,11 +235,6 @@ void UReviveAbility::EndAbility(
 	bool bReplicateEndAbility,
 	bool bWasCancelled)
 {
-	if (ULMSCombatHUDPresenterComponent* CombatHUDPresenter = GetCombatHUDPresenter())
-	{
-		CombatHUDPresenter->HideInteractionProgress();
-	}
-
 	// 서버가 등록한 TargetData 수신 델리게이트 해제 (재활성화 시 중복 바인딩 방지)
 	if (TargetDataDelegateHandle.IsValid())
 	{

@@ -19,7 +19,8 @@
 #include "PingMarker.h"
 #include "GameplayTagContainer.h"
 #include "UI/IndicatorManagerComponent.h"
-#include "UI/LMSCombatHUDPresenterComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Materials/MaterialInterface.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -65,9 +66,27 @@ ALMS_TeamProjectCharacter::ALMS_TeamProjectCharacter()
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character)
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
 
+	// 1인칭 전용 팔 메시: 실제 부착은 BeginPlay에서 블루프린트의 FirstPersonCamera로 재부착됩니다
+	// (블루프린트 전용 컴포넌트라 생성자 시점엔 참조할 수 없음). 여기서는 임시로 캡슐에 붙여둡니다.
+	// 메시/AnimBlueprint(SK_Murdock_FP_Arms, NewAnimBlueprint)는 파생 블루프린트에서 지정합니다.
+	Mesh1P = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Mesh1P"));
+	Mesh1P->SetupAttachment(GetCapsuleComponent());
+	Mesh1P->SetRelativeLocation(FVector(-3.585369f, 0.134412f, -141.269165f));
+	Mesh1P->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
+	Mesh1P->SetOnlyOwnerSee(true);
+	Mesh1P->bCastDynamicShadow = false;
+	Mesh1P->CastShadow = false;
 
+	// 1인칭 무기 메시: Mesh1P의 손 소켓에 부착됩니다. 실제 스켈레탈메시는 무기를
+	// 장착할 때(LMSWeaponComponent::EquipWeaponFromData) 3인칭 무기와 동기화됩니다.
+	FirstPersonWeaponMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("FirstPersonWeaponMesh"));
+	FirstPersonWeaponMesh->SetupAttachment(Mesh1P, TEXT("hand_rSocket"));
+	FirstPersonWeaponMesh->SetOnlyOwnerSee(true);
+	FirstPersonWeaponMesh->bCastDynamicShadow = false;
+	FirstPersonWeaponMesh->CastShadow = false;
 
-
+	// 몸통(3인칭) 메시는 반대로 소유 클라이언트에게는 숨기고, 다른 클라이언트에게만 보이게 합니다.
+	GetMesh()->SetOwnerNoSee(true);
 }
 
 UAbilitySystemComponent* ALMS_TeamProjectCharacter::GetAbilitySystemComponent() const
@@ -382,31 +401,6 @@ void ALMS_TeamProjectCharacter::TraceForReviveTarget()
 	}
 
 	CurrentReviveTarget = NewTarget;
-
-	APlayerController* PlayerController = Cast<APlayerController>(GetController());
-	if (!PlayerController)
-	{
-		return;
-	}
-
-	ULMSCombatHUDPresenterComponent* CombatHUDPresenter =
-		PlayerController->FindComponentByClass<ULMSCombatHUDPresenterComponent>();
-	if (!CombatHUDPresenter)
-	{
-		return;
-	}
-
-	if (CurrentReviveTarget)
-	{
-		CombatHUDPresenter->ShowInteractionPrompt(
-			FText::FromString(TEXT("E")),
-			FText::FromString(TEXT("구조하기"))
-		);
-	}
-	else
-	{
-		CombatHUDPresenter->HideInteractionPrompt();
-	}
 }
 
 void ALMS_TeamProjectCharacter::BeginPlay()
@@ -436,6 +430,16 @@ void ALMS_TeamProjectCharacter::BeginPlay()
 		ReviveTraceTimerHandle, this,
 		&ALMS_TeamProjectCharacter::TraceForReviveTarget,
 		0.15f, true);
+}
+
+void ALMS_TeamProjectCharacter::AttachMesh1PTo(USceneComponent* NewParent)
+{
+	if (!Mesh1P || !NewParent)
+	{
+		return;
+	}
+
+	Mesh1P->AttachToComponent(NewParent, FAttachmentTransformRules::KeepRelativeTransform);
 }
 
 void ALMS_TeamProjectCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)

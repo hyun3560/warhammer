@@ -28,6 +28,23 @@ AEnemyAIController::AEnemyAIController()
 void AEnemyAIController::BeginPlay()
 {
 	Super::BeginPlay();
+
+	if (Blackboard)
+	{
+		ABaseEnemyCharacter* Enemy = Cast<ABaseEnemyCharacter>(GetPawn());
+		if (Enemy)
+		{
+			const FEnemyTableRow* Data = Enemy->GetEnemyData();
+			if (Data == nullptr)
+			{
+				UE_LOG(LogTemp, Log, TEXT("%s"), Enemy->GetFName());
+				return;
+			}
+			Blackboard->SetValueAsFloat(TEXT("CoolTime"), Data->CoolTime);
+			Blackboard->SetValueAsFloat(TEXT("MaxCoolTime"), Data->CoolTime);
+			Blackboard->SetValueAsFloat(TEXT("AttackDistance"), Data->AttackDistance);
+		}
+	}
 }
 
 void AEnemyAIController::OnPossess(APawn* InPawn)
@@ -43,20 +60,7 @@ void AEnemyAIController::OnPossess(APawn* InPawn)
 
 	if (Blackboard)
 	{
-		Blackboard->SetValueAsVector(TEXT("SpawnLocation"), InPawn->GetActorLocation());
-
-		ABaseEnemyCharacter* Enemy = Cast<ABaseEnemyCharacter>(InPawn);
-		const FEnemyTableRow* Data = Enemy ? Enemy->GetEnemyData() : nullptr;
-		if (Data)
-		{
-			Blackboard->SetValueAsFloat(TEXT("CoolTime"), Data->CoolTime);
-			Blackboard->SetValueAsFloat(TEXT("MaxCoolTime"), Data->CoolTime);
-			Blackboard->SetValueAsFloat(TEXT("AttackDistance"), Data->AttackDistance);
-		}
-		else if (Enemy)
-		{
-			UE_LOG(LogTemp, Log, TEXT("%s"), *Enemy->GetName());
-		}
+		Blackboard->SetValueAsVector(TEXT("SpawnLocation"), InPawn->GetActorLocation());		
 	}
 }
 

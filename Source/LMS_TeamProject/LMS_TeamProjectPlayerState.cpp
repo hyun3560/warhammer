@@ -3,7 +3,6 @@
 #include "LMS_TeamProjectPlayerState.h"
 #include "AbilitySystemComponent.h"
 #include "LMSAttributeSet.h"
-#include "Net/UnrealNetwork.h"
 
 ALMS_TeamProjectPlayerState::ALMS_TeamProjectPlayerState()
 {
@@ -26,16 +25,3 @@ UAbilitySystemComponent* ALMS_TeamProjectPlayerState::GetAbilitySystemComponent(
 	return AbilitySystemComponent;
 }
 
-void ALMS_TeamProjectPlayerState::SetSelectedWeaponID(FName NewWeaponID)
-{
-	SelectedWeaponID = NewWeaponID;
-	bHasSelectedWeapon = !NewWeaponID.IsNone();
-}
-
-void ALMS_TeamProjectPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
-{
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
-
-	DOREPLIFETIME(ALMS_TeamProjectPlayerState, SelectedWeaponID);
-	DOREPLIFETIME(ALMS_TeamProjectPlayerState, bHasSelectedWeapon);
-}

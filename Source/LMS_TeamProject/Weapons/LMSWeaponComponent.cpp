@@ -12,7 +12,9 @@
 #include "LMSWeaponSecondaryAbility.h"
 #include "LMSWeaponSkillAbility.h"
 #include "TimerManager.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "../LMSGameplayAbility.h"
+#include "../LMS_TeamProjectCharacter.h"
 
 ULMSWeaponComponent::ULMSWeaponComponent()
 {
@@ -52,6 +54,15 @@ bool ULMSWeaponComponent::EquipWeaponFromData(const FWeaponData& WeaponData)
 	CurrentWeaponData = WeaponData;
 	CurrentWeapon->SetWeaponData(WeaponData);
 	CurrentWeapon->Equip(OwnerCharacter, EquippedSocketName);
+
+	// 1인칭 팔에 붙는 무기 메시를 3인칭 무기와 같은 스켈레탈메시로 동기화합니다.
+	if (ALMS_TeamProjectCharacter* FirstPersonCharacter = Cast<ALMS_TeamProjectCharacter>(OwnerCharacter))
+	{
+		if (USkeletalMeshComponent* FirstPersonWeaponMesh = FirstPersonCharacter->GetFirstPersonWeaponMesh())
+		{
+			FirstPersonWeaponMesh->SetSkeletalMesh(CurrentWeapon->GetWeaponMesh()->GetSkeletalMeshAsset());
+		}
+	}
 
 	AmmoInMagazine = CurrentWeaponData.MagazineSize;
 	ReserveAmmo = CurrentWeaponData.MaxReserveAmmo;
@@ -113,6 +124,14 @@ void ULMSWeaponComponent::UnequipCurrentWeapon()
 		CurrentWeapon->Unequip();
 		CurrentWeapon->Destroy();
 		CurrentWeapon = nullptr;
+	}
+
+	if (ALMS_TeamProjectCharacter* FirstPersonCharacter = Cast<ALMS_TeamProjectCharacter>(GetOwnerCharacter()))
+	{
+		if (USkeletalMeshComponent* FirstPersonWeaponMesh = FirstPersonCharacter->GetFirstPersonWeaponMesh())
+		{
+			FirstPersonWeaponMesh->SetSkeletalMesh(nullptr);
+		}
 	}
 
 	if (UWorld* World = GetWorld())

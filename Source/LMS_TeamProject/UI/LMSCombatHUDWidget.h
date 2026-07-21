@@ -30,11 +30,6 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable, Category = "LMS|Combat HUD")
 	void SetStamina(float CurrentStamina, float MaxStamina);
 
-	// 플레이어 본인이 그로기 상태인지 HUD 블루프린트에 전달합니다.
-	// 실제 HP UI 붉은 깜박임 연출은 WBP_CombatHUD 블루프린트에서 구현합니다.
-	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable, Category = "Combat HUD")
-	void SetGroggyState(bool bIsGroggy);
-
 	// 현재 스킬 쿨타임을 확인 후 전달합니다.
 	// 실제 ProgressBar/Text 갱신 로직은 WBP_LJH_CombatHUD 블루프린트에서 구현합니다.
 	UFUNCTION(BlueprintImplementableEvent, BlueprintCallable, Category = "Combat HUD")

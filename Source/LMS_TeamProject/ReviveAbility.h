@@ -5,8 +5,6 @@
 #include "Abilities/GameplayAbilityTargetTypes.h"
 #include "ReviveAbility.generated.h"
 
-class ULMSCombatHUDPresenterComponent;
-
 /**
  * 쓰러진 팀원을 부활시키는 홀드형 어빌리티.
  *
@@ -63,12 +61,6 @@ protected:
 
 	UFUNCTION()
 	void OnReviveCancelled();   // 조건 이탈 / 입력 해제 → 취소
-
-	UFUNCTION()
-	void HandleReviveProgress(float Progress);
-
-	// 로컬 플레이어의 HUD Presenter를 찾아 구조 진행바 UI에 접근합니다.
-	ULMSCombatHUDPresenterComponent* GetCombatHUDPresenter() const;
 
 protected:
 	// 부활에 필요한 홀드 시간(초)

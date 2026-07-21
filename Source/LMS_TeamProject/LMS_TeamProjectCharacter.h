@@ -122,6 +122,17 @@ class ALMS_TeamProjectCharacter : public ACharacter, public IAbilitySystemInterf
 	UPROPERTY(EditDefaultsOnly, Category = "Revive")
 	float ReviveTraceDistance = 250.f;
 
+	/** 1인칭 시점 전용 팔 메시 (SK_Murdock_FP_Arms). 카메라에 부착되며 소유 클라이언트에게만 렌더링됩니다.
+	 * 몸통 메시(GetMesh())는 반대로 소유 클라이언트에게는 숨김 처리되어, 다른 클라이언트에게는
+	 * 기존 3인칭 몸통이, 본인 화면에는 이 팔 메시만 보이게 됩니다. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FirstPersonMesh", meta = (AllowPrivateAccess = "true"))
+	USkeletalMeshComponent* Mesh1P;
+
+	/** 1인칭 팔(Mesh1P)에 붙는 무기 메시. WeaponComponent가 무기를 장착할 때마다
+	 * 3인칭 무기(LMSWeaponBase::WeaponMesh)와 같은 스켈레탈 메시로 동기화됩니다. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "FirstPersonMesh", meta = (AllowPrivateAccess = "true"))
+	USkeletalMeshComponent* FirstPersonWeaponMesh;
+
 public:
 	ALMS_TeamProjectCharacter();
 
@@ -189,5 +200,16 @@ public:
 	TObjectPtr<AActor> GetCurrentReviveTarget() const { return CurrentReviveTarget; }
 
 	void TraceForReviveTarget();
+
+	/** Returns Mesh1P subobject (1인칭 전용 팔 메시) **/
+	FORCEINLINE class USkeletalMeshComponent* GetMesh1P() const { return Mesh1P; }
+
+	/** Returns FirstPersonWeaponMesh subobject (1인칭 전용 무기 메시) **/
+	FORCEINLINE class USkeletalMeshComponent* GetFirstPersonWeaponMesh() const { return FirstPersonWeaponMesh; }
+
+	/** Mesh1P(1인칭 팔 메시)를 NewParent에 재부착합니다. 블루프린트의 BeginPlay에서
+	 * FirstPersonCamera 컴포넌트 참조를 직접 가져와 이 함수에 넘겨 호출하세요. */
+	UFUNCTION(BlueprintCallable, Category = "FirstPersonMesh")
+	void AttachMesh1PTo(USceneComponent* NewParent);
 };
 
