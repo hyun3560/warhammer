@@ -39,6 +39,7 @@ protected:
 public:
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
 
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
@@ -53,8 +54,8 @@ public:
 	const FEnemyTableRow* GetEnemyData() const;
 
 	// 사망 후 액터를 제거하기까지의 지연 시간(초). 사망 애니메이션 재생 시간 확보용.
-	UPROPERTY(EditDefaultsOnly, Category = "Stat")
-	float DeathDestroyDelay = 2.f;
+	/*UPROPERTY(EditDefaultsOnly, Category = "Stat")
+	float DeathDestroyDelay = 2.f;*/
 
 private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Abilities", meta = (AllowPrivateAccess = "true"))
@@ -63,12 +64,16 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Abilities", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<ULMSAttributeSet> AttributeSet;
 
-	FTimerHandle DeathDestroyTimerHandle;
+	//FTimerHandle DeathDestroyTimerHandle;
 
 	void GiveDefaultAbilities();
 
 	// AttributeSet->OnHealthZero(서버 전용)에 바인딩되어 사망 처리를 수행합니다.
 	void HandleHealthZero(const FGameplayEffectModCallbackData& Data);
+
+	// TakeDamage에서 ApplyModToAttribute 사용 시 PostGameplayEffectExecute가 호출되지 않아
+	// OnHealthZero가 안 불리는 경우를 대비해 직접 호출하는 사망 처리 로직.
+	void HandleDeath();
 
 	void HandleDeathDestroy();
 };

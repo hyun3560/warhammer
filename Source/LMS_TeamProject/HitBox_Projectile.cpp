@@ -57,7 +57,7 @@ bool AHitBox_Projectile::LaunchToTarget(FVector TargetLocation)
 
 	if (bSuccess)
 	{
-		ProjectileMovement->MaxSpeed = LaunchVelocity.Size();
+		ProjectileMovement->MaxSpeed = MaxSpeed;//LaunchVelocity.Size();
 		ProjectileMovement->Velocity = LaunchVelocity;
 	}
 
