@@ -1,4 +1,4 @@
-#include "IndicatorOverlayWidget.h"
+﻿#include "IndicatorOverlayWidget.h"
 #include "IndicatorEntryWidget.h"
 #include "IndicatorManagerComponent.h"
 #include "Components/CanvasPanel.h"
@@ -41,7 +41,6 @@ void UIndicatorOverlayWidget::NativeTick(const FGeometry& MyGeometry, float InDe
 		{
 			break;
 		}
-
 		if (UCanvasPanelSlot* NewSlot = RootCanvas->AddChildToCanvas(NewEntry))
 		{
 			NewSlot->SetAlignment(FVector2D(0.5f, 0.5f));
@@ -56,7 +55,6 @@ void UIndicatorOverlayWidget::NativeTick(const FGeometry& MyGeometry, float InDe
 		{
 			continue;
 		}
-
 		if (Index >= IndicatorDataList.Num())
 		{
 			Entry->SetVisibility(ESlateVisibility::Collapsed);

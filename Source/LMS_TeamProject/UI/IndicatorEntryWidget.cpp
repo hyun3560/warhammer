@@ -1,4 +1,6 @@
-#include "IndicatorEntryWidget.h"
+﻿#include "IndicatorEntryWidget.h"
+#include "UObject/UnrealType.h"
+#include "Components/Image.h"
 
 void UIndicatorEntryWidget::UpdateVisual(const FLMSIndicatorScreenData& NewData)
 {

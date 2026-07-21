@@ -13,14 +13,11 @@ protected:
 	virtual bool ExecuteWeaponSkill_Implementation(ULMSWeaponComponent* WeaponComponent) override;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Skill")
-	float DamageMultiplier = 2.5f;
+	float DamageMultiplier = 2.f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Skill")
-	float RangeMultiplier = 1.4f;
+	float BoostDuration = 5.f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Skill")
-	float TraceRadius = 140.f;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Skill")
-	bool bDrawDebugTrace = true;
+	int32 BoostedTraceCount = 1;
 };

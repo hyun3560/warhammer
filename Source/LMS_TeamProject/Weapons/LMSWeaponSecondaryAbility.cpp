@@ -22,6 +22,11 @@ void ULMSWeaponSecondaryAbility::ActivateAbility(
 	if (ULMSWeaponComponent* WeaponComponent = GetWeaponComponentFromActorInfo())
 	{
 		WeaponComponent->StartSecondaryAction();
+		OnSecondaryStarted(WeaponComponent);
+	}
+	else
+	{
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
 	}
 }
 
@@ -43,6 +48,7 @@ void ULMSWeaponSecondaryAbility::EndAbility(
 	if (ULMSWeaponComponent* WeaponComponent = GetWeaponComponentFromActorInfo())
 	{
 		WeaponComponent->StopSecondaryAction();
+		OnSecondaryEnded(WeaponComponent, bWasCancelled);
 	}
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);

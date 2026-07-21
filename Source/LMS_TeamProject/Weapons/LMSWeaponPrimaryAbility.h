@@ -4,6 +4,8 @@
 #include "LMSWeaponGameplayAbility.h"
 #include "LMSWeaponPrimaryAbility.generated.h"
 
+class ULMSWeaponComponent;
+
 UCLASS(Blueprintable)
 class LMS_TEAMPROJECT_API ULMSWeaponPrimaryAbility : public ULMSWeaponGameplayAbility
 {
@@ -18,4 +20,8 @@ protected:
 		const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayAbilityActivationInfo ActivationInfo,
 		const FGameplayEventData* TriggerEventData) override;
+
+	UFUNCTION(BlueprintNativeEvent, Category = "Weapon|Ability")
+	bool ExecutePrimaryAttack(ULMSWeaponComponent* WeaponComponent);
+	virtual bool ExecutePrimaryAttack_Implementation(ULMSWeaponComponent* WeaponComponent);
 };

@@ -9,6 +9,6 @@ bool ULMSHammerSkillAbility::ExecuteWeaponSkill_Implementation(ULMSWeaponCompone
 		return false;
 	}
 
-	WeaponComponent->PerformMeleeSkillSweep(DamageMultiplier, RangeMultiplier, TraceRadius, bDrawDebugTrace);
+	WeaponComponent->ActivateMeleeDamageBoost(DamageMultiplier, BoostDuration, BoostedTraceCount);
 	return true;
 }
