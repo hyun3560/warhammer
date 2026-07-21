@@ -9,8 +9,11 @@
 class ALMSWeaponBase;
 class ACharacter;
 class UAbilitySystemComponent;
+class UAnimInstance;
+class UAnimMontage;
 class UCameraComponent;
 class UDataTable;
+class USceneComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnWeaponAmmoChanged, int32, AmmoInMagazine, int32, ReserveAmmo);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnWeaponSkillCooldownChanged, float, CurrentCooldown, float, MaxCooldown);
@@ -88,8 +91,62 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Skill")
 	void PerformMeleeSkillSweep(float DamageMultiplier, float RangeMultiplier, float TraceRadius, bool bDrawDebugTrace);
 
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Skill")
+	void ActivateMeleeDamageBoost(float DamageMultiplier, float Duration, int32 BoostedTraceCount = 1);
+
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Ranged")
 	void FireRangedShot(float DamageMultiplier, float RangeMultiplier, bool bDrawDebugTrace);
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Trace")
+	void BeginWeaponTrace(FName StartSocketName, FName EndSocketName, float TraceRadius, float DamageMultiplier, bool bDrawDebugTrace);
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Trace")
+	void TickWeaponTrace(float DeltaTime);
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Trace")
+	void EndWeaponTrace();
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Combo")
+	void StartComboAttack(int32 StartingComboIndex = 1);
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Combo")
+	bool HandleMeleeComboInput(UAnimInstance* AnimInstance, UAnimMontage* ComboMontage, const TArray<FName>& ComboSectionNames);
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Combo")
+	void NotifyComboSectionBegin(int32 ComboIndex);
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Combo")
+	void NotifyComboSectionEnd(int32 ComboIndex);
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Combo")
+	bool RegisterComboInput();
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Combo")
+	void OpenComboWindow();
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Combo")
+	void CloseComboWindow();
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Combo")
+	bool QueueComboSection(UAnimInstance* AnimInstance, UAnimMontage* ComboMontage, FName CurrentSection, FName NextSection, int32 NextComboIndex);
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Combo")
+	bool ConsumeBufferedComboInput();
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Combo")
+	void ResetCombo();
+
+	UFUNCTION(BlueprintPure, Category = "Weapon|Combo")
+	bool IsComboAttacking() const { return bIsComboAttacking; }
+
+	UFUNCTION(BlueprintPure, Category = "Weapon|Combo")
+	bool IsComboWindowOpen() const { return bComboWindowOpen; }
+
+	UFUNCTION(BlueprintPure, Category = "Weapon|Combo")
+	bool HasBufferedComboInput() const { return bComboInputBuffered; }
+
+	UFUNCTION(BlueprintPure, Category = "Weapon|Combo")
+	int32 GetCurrentComboIndex() const { return CurrentComboIndex; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -100,6 +157,8 @@ protected:
 	void GrantCurrentWeaponAbilities();
 	void ClearGrantedWeaponAbilities();
 	void GrantWeaponAbility(TSubclassOf<UGameplayAbility> AbilityClass);
+	ALMSWeaponBase* SpawnWeaponActor(const FWeaponData& WeaponData) const;
+	USceneComponent* FindFirstPersonWeaponAttachComponent() const;
 	void StartMeleeAttack();
 	void StartRangedAttack();
 	void StartBlock();
@@ -108,9 +167,16 @@ protected:
 	void StopAim();
 	bool CanReload() const;
 	void FinishReload();
+	void ClearMeleeDamageBoost();
 	void BroadcastAmmoChanged();
 	void UpdateSkillCooldown();
 	void BroadcastSkillCooldownChanged(float CurrentCooldown, float MaxCooldown);
+	ALMSWeaponBase* GetWeaponTraceActor() const;
+	bool GetWeaponTraceSocketLocations(FVector& OutStart, FVector& OutEnd) const;
+	void TraceWeaponSegment(const FVector& PreviousPoint, const FVector& CurrentPoint, FCollisionQueryParams& QueryParams);
+	void HandleWeaponTraceHit(const FHitResult& Hit);
+	bool QueueBufferedComboSection();
+	void StopActiveComboMontage(float BlendOutTime = 0.15f);
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	UDataTable* WeaponDataTable;
@@ -121,8 +187,29 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	FName EquippedSocketName = TEXT("hand_rSocket");
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|First Person")
+	bool bSpawnFirstPersonWeaponVisual = true;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|First Person")
+	FName FirstPersonWeaponAttachComponentName = TEXT("SK_Murdock_FP_Arms");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|First Person")
+	FName FirstPersonEquippedSocketName = TEXT("hand_rSocket");
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Melee")
 	float MeleeTraceRadius = 80.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Trace")
+	FName DefaultTraceStartSocketName = TEXT("TraceStart");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Trace")
+	FName DefaultTraceEndSocketName = TEXT("TraceEnd");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Trace")
+	float WeaponTraceRadius = 12.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Trace", meta = (ClampMin = "2", ClampMax = "16"))
+	int32 WeaponTraceSampleCount = 5;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Aim")
 	float AimFOV = 65.f;
@@ -138,6 +225,9 @@ protected:
 
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
 	ALMSWeaponBase* CurrentWeapon;
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|First Person")
+	ALMSWeaponBase* FirstPersonWeapon;
 
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
 	FWeaponData CurrentWeaponData;
@@ -157,12 +247,44 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|State")
 	bool bIsAiming = false;
 
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|Combo")
+	bool bIsComboAttacking = false;
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|Combo")
+	bool bComboWindowOpen = false;
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|Combo")
+	bool bComboInputBuffered = false;
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|Combo")
+	bool bComboTransitionQueued = false;
+
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|Combo")
+	int32 CurrentComboIndex = 0;
+
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|GAS")
 	TArray<FGameplayAbilitySpecHandle> GrantedAbilityHandles;
 
 	FTimerHandle ReloadTimerHandle;
 	FTimerHandle SkillCooldownTimerHandle;
+	FTimerHandle MeleeDamageBoostTimerHandle;
 
 	float SkillCooldownEndTime = 0.f;
 	float SkillCooldownDuration = 0.f;
+	float MeleeDamageBoostMultiplier = 1.f;
+	int32 RemainingBoostedWeaponTraces = 0;
+
+	bool bIsWeaponTracing = false;
+	bool bDrawDebugWeaponTrace = false;
+	float ActiveWeaponTraceRadius = 12.f;
+	float ActiveWeaponTraceDamageMultiplier = 1.f;
+	FName ActiveTraceStartSocketName = NAME_None;
+	FName ActiveTraceEndSocketName = NAME_None;
+	FVector PreviousTraceStart = FVector::ZeroVector;
+	FVector PreviousTraceEnd = FVector::ZeroVector;
+	TSet<TWeakObjectPtr<AActor>> WeaponTraceHitActors;
+
+	TWeakObjectPtr<UAnimInstance> ActiveComboAnimInstance;
+	TWeakObjectPtr<UAnimMontage> ActiveComboMontage;
+	TArray<FName> ActiveComboSectionNames;
 };

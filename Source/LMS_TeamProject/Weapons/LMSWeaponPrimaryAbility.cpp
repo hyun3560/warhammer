@@ -19,10 +19,23 @@ void ULMSWeaponPrimaryAbility::ActivateAbility(
 		return;
 	}
 
-	if (ULMSWeaponComponent* WeaponComponent = GetWeaponComponentFromActorInfo())
+	ULMSWeaponComponent* WeaponComponent = GetWeaponComponentFromActorInfo();
+	if (!WeaponComponent || !ExecutePrimaryAttack(WeaponComponent))
 	{
-		WeaponComponent->StartAttack();
+		EndAbility(Handle, ActorInfo, ActivationInfo, true, true);
+		return;
 	}
 
 	EndAbility(Handle, ActorInfo, ActivationInfo, true, false);
+}
+
+bool ULMSWeaponPrimaryAbility::ExecutePrimaryAttack_Implementation(ULMSWeaponComponent* WeaponComponent)
+{
+	if (!WeaponComponent)
+	{
+		return false;
+	}
+
+	WeaponComponent->StartAttack();
+	return true;
 }

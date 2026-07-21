@@ -18,7 +18,11 @@ public:
 	ALMSWeaponBase();
 
 	virtual void Equip(ACharacter* NewOwnerCharacter, FName AttachSocketName);
+	virtual void EquipToComponent(ACharacter* NewOwnerCharacter, USceneComponent* AttachParent, FName AttachSocketName);
 	virtual void Unequip();
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon")
+	void SetOwnerVisibilityRules(bool bOnlyOwnerSee, bool bOwnerNoSee, bool bCastShadow);
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	FTransform GetAttackOriginTransform() const;
