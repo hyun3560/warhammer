@@ -108,7 +108,10 @@ void ULMSAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 		SetStamina(FMath::Clamp(GetStamina(), 0.f, GetMaxStamina()));
 	}
 
-
+	else if (Data.EvaluatedData.Attribute == GetShieldAttribute())
+	{
+		SetShield(FMath::Clamp(GetShield(), 0.f, GetMaxShield()));
+	}
 
 	else if (Data.EvaluatedData.Attribute == GetDamageAttribute()) //쉴드 로직
 	{

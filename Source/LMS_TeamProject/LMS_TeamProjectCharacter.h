@@ -43,6 +43,9 @@ class ALMS_TeamProjectCharacter : public ACharacter, public IAbilitySystemInterf
 	TArray<TSubclassOf<UGameplayEffect>> DefaultEffects;
 
 	UPROPERTY(EditDefaultsOnly, Category = Effects, meta = (AllowPrivateAccess = "true"))
+	TSubclassOf<UGameplayEffect> ShieldEffect;
+
+	UPROPERTY(EditDefaultsOnly, Category = Effects, meta = (AllowPrivateAccess = "true"))
 	TSubclassOf<UGameplayEffect> IncapacitatedEffect;
 
 	UPROPERTY(EditDefaultsOnly, Category = Effects, meta = (AllowPrivateAccess = "true"))
@@ -117,7 +120,8 @@ class ALMS_TeamProjectCharacter : public ACharacter, public IAbilitySystemInterf
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* ReloadAction;
 
-
+	UPROPERTY(EditDefaultsOnly, Category = "Coherency")
+	float CoherencyDistance = 500.f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Revive")
 	float ReviveTraceDistance = 250.f;
@@ -172,6 +176,7 @@ protected:
 
 	private:
 		FTimerHandle ReviveTraceTimerHandle;
+		FTimerHandle CoherencyTimerHandle;
 
 public:
 	UFUNCTION(BlueprintCallable)
@@ -188,6 +193,8 @@ public:
 
 	TObjectPtr<AActor> GetCurrentReviveTarget() const { return CurrentReviveTarget; }
 
+	void CheckCoherency();
 	void TraceForReviveTarget();
+	
 };
 

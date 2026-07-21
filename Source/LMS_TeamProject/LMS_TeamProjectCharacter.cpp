@@ -20,6 +20,7 @@
 #include "GameplayTagContainer.h"
 #include "UI/IndicatorManagerComponent.h"
 #include "UI/LMSCombatHUDPresenterComponent.h"
+#include "Kismet/GameplayStatics.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -82,6 +83,13 @@ void ALMS_TeamProjectCharacter::PossessedBy(AController* NewController)
 		InitAbilityActorInfo();
 		GiveDefaultAbilities();
 		ApplyDefaultEffects();
+
+		GetWorldTimerManager().SetTimer(
+			CoherencyTimerHandle,
+			this,
+			&ThisClass::CheckCoherency,
+			0.25f,
+			true);
 }
 
 void ALMS_TeamProjectCharacter::OnRep_PlayerState()
@@ -339,6 +347,77 @@ void ALMS_TeamProjectCharacter::HandleIncapHealthZero(const FGameplayEffectModCa
 
 }
 
+void ALMS_TeamProjectCharacter::CheckCoherency()
+{
+
+	if (!HasAuthority() || !AbilitySystemComponent || !ShieldEffect)
+	{
+		return;
+	}
+
+	static const FGameplayTag IncapTag =
+		FGameplayTag::RequestGameplayTag(FName("state.Incapacitated"));
+
+	static const FGameplayTag ShieldTag =
+		FGameplayTag::RequestGameplayTag(FName("Data.Shield"));
+
+	int32 NearbyCount = 0;
+
+	const FVector MyLocation = GetActorLocation();
+	const float CoherencyDistanceSq = FMath::Square(CoherencyDistance);
+
+	TArray<AActor*> Players;
+	UGameplayStatics::GetAllActorsOfClass(
+		GetWorld(),
+		ALMS_TeamProjectCharacter::StaticClass(),
+		Players);
+
+	for (AActor* Actor : Players)
+	{
+		ALMS_TeamProjectCharacter* Other = Cast<ALMS_TeamProjectCharacter>(Actor);
+
+		if (!Other || Other == this)
+			continue;
+
+		if (!Other->AbilitySystemComponent)
+			continue;
+
+		if (Other->AbilitySystemComponent->HasMatchingGameplayTag(IncapTag))
+			continue;
+
+		if (FVector::DistSquared(MyLocation, Other->GetActorLocation()) > CoherencyDistanceSq)
+			continue;
+
+		++NearbyCount;
+	}
+
+	if (NearbyCount > 0)
+	{
+		FGameplayEffectContextHandle Context = AbilitySystemComponent->MakeEffectContext();
+		Context.AddSourceObject(this);
+
+		FGameplayEffectSpecHandle ShieldSpec =
+			AbilitySystemComponent->MakeOutgoingSpec(ShieldEffect, 1.f, Context);
+
+		
+
+
+		ShieldSpec.Data->SetSetByCallerMagnitude(
+			ShieldTag,
+			NearbyCount * 3
+		);
+
+		if (ShieldSpec.IsValid())
+		{
+			AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*ShieldSpec.Data.Get());
+
+		}
+	}
+
+
+
+}
+
 void ALMS_TeamProjectCharacter::TraceForReviveTarget()
 {
 	// 로컬 컨트롤 플레이어만 트레이스 (남의 화면 기준은 의미 없음)
@@ -409,6 +488,8 @@ void ALMS_TeamProjectCharacter::TraceForReviveTarget()
 	}
 }
 
+
+
 void ALMS_TeamProjectCharacter::BeginPlay()
 {
 	// Call the base class
@@ -436,6 +517,8 @@ void ALMS_TeamProjectCharacter::BeginPlay()
 		ReviveTraceTimerHandle, this,
 		&ALMS_TeamProjectCharacter::TraceForReviveTarget,
 		0.15f, true);
+
+	
 }
 
 void ALMS_TeamProjectCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
