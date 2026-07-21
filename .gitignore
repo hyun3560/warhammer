@@ -74,5 +74,12 @@ Plugins/**/Intermediate/*
 # Cache files for the editor to use
 DerivedDataCache/*
 
-# Content is managed outside of git (too large)
-Content/
+# Large third-party marketplace asset packs (managed outside of git)
+Content/ParagonIggyScorch/
+Content/ParagonGrux/
+Content/ParagonMurdock/
+Content/Scifi_desert_city/
+Content/Sci_FI_Valley_Village/
+Content/StarterContent/
+Content/Two_Handed_Sword/
+Content/Fab/
