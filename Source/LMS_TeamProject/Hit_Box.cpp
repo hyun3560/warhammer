@@ -1,9 +1,10 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "Hit_Box.h"
 
 #include "LMS_TeamProjectCharacter.h"
+#include "LMSDamageLibrary.h"
 
 // Sets default values
 AHit_Box::AHit_Box()
@@ -21,6 +22,12 @@ void AHit_Box::BeginPlay()
 
 void AHit_Box::BoxTraceHit(float Distance, FVector Size, float Damage)
 {
+
+	if (!HasAuthority())
+	{
+		return;
+	}
+
 	TArray<FHitResult> HitResults;
 
 	FVector StartPos =GetOwner()->GetActorLocation() + (GetOwner()->GetActorForwardVector() * Distance);
@@ -55,8 +62,7 @@ void AHit_Box::BoxTraceHit(float Distance, FVector Size, float Damage)
 		{
 			if (ALMS_TeamProjectCharacter* Character = Cast<ALMS_TeamProjectCharacter>(result.GetActor()))
 			{
-				Character->TakeDamageFromOrigin(Damage, OwnerActor ? OwnerActor->GetActorLocation() : result.ImpactPoint);
-				UE_LOG(LogTemp, Log, TEXT("%f"), Damage);
+				ULMSDamageLibrary::ApplyDamageEffect(GetOwner(), Character, Damage, DamageEffect);
 				break;
 			}
 		}
