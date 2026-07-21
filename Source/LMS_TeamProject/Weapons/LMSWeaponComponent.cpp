@@ -30,7 +30,8 @@ void ULMSWeaponComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (!DefaultWeaponRowName.IsNone())
+	AActor* OwnerActor = GetOwner();
+	if (OwnerActor && OwnerActor->HasAuthority() && !DefaultWeaponRowName.IsNone())
 	{
 		EquipWeaponByRowName(DefaultWeaponRowName);
 	}
@@ -56,41 +57,7 @@ bool ULMSWeaponComponent::EquipWeaponFromData(const FWeaponData& WeaponData)
 	EquippedWeaponID = CurrentWeaponData.WeaponID;
 	CurrentWeapon->SetWeaponData(WeaponData);
 	CurrentWeapon->Equip(OwnerCharacter, EquippedSocketName);
-
-	if (bSpawnFirstPersonWeaponVisual)
-	{
-		USceneComponent* FirstPersonAttachComponent = FindFirstPersonWeaponAttachComponent();
-		if (FirstPersonAttachComponent)
-		{
-			if (!FirstPersonEquippedSocketName.IsNone() && !FirstPersonAttachComponent->DoesSocketExist(FirstPersonEquippedSocketName))
-			{
-				UE_LOG(
-					LogTemp,
-					Warning,
-					TEXT("First-person weapon socket '%s' does not exist on component '%s'."),
-					*FirstPersonEquippedSocketName.ToString(),
-					*GetNameSafe(FirstPersonAttachComponent));
-			}
-			else
-			{
-				FirstPersonWeapon = SpawnWeaponActor(WeaponData, WeaponData.FirstPersonWeaponClass);
-				if (FirstPersonWeapon)
-				{
-					FirstPersonWeapon->SetReplicates(false);
-					FirstPersonWeapon->SetWeaponData(WeaponData);
-					FirstPersonWeapon->EquipToComponent(OwnerCharacter, FirstPersonAttachComponent, FirstPersonEquippedSocketName);
-					FirstPersonWeapon->SetOwnerVisibilityRules(true, false, false);
-					FirstPersonWeapon->SetActorEnableCollision(false);
-					CurrentWeapon->SetOwnerVisibilityRules(false, true, true);
-				}
-			}
-		}
-	}
-
-	if (!FirstPersonWeapon)
-	{
-		CurrentWeapon->SetOwnerVisibilityRules(false, false, true);
-	}
+	RefreshFirstPersonWeaponVisual();
 
 	AmmoInMagazine = CurrentWeaponData.MagazineSize;
 	ReserveAmmo = CurrentWeaponData.MaxReserveAmmo;
@@ -412,6 +379,14 @@ void ULMSWeaponComponent::OnRep_CurrentWeapon()
 {
 	if (!CurrentWeapon)
 	{
+		if (FirstPersonWeapon)
+		{
+			FirstPersonWeapon->Unequip();
+			FirstPersonWeapon->Destroy();
+			FirstPersonWeapon = nullptr;
+		}
+
+		BroadcastWeaponHUDChanged();
 		return;
 	}
 
@@ -423,6 +398,7 @@ void ULMSWeaponComponent::OnRep_CurrentWeapon()
 		CurrentWeapon->Equip(OwnerCharacter, EquippedSocketName);
 	}
 
+	RefreshFirstPersonWeaponVisual();
 	BroadcastWeaponHUDChanged();
 }
 
@@ -564,6 +540,63 @@ USceneComponent* ULMSWeaponComponent::FindFirstPersonWeaponAttachComponent() con
 		*GetNameSafe(OwnerCharacter));
 
 	return nullptr;
+}
+
+void ULMSWeaponComponent::RefreshFirstPersonWeaponVisual()
+{
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (!OwnerCharacter || !CurrentWeapon)
+	{
+		return;
+	}
+
+	if (FirstPersonWeapon)
+	{
+		FirstPersonWeapon->Unequip();
+		FirstPersonWeapon->Destroy();
+		FirstPersonWeapon = nullptr;
+	}
+
+	if (!OwnerCharacter->IsLocallyControlled() || !bSpawnFirstPersonWeaponVisual)
+	{
+		CurrentWeapon->SetOwnerVisibilityRules(false, false, true);
+		return;
+	}
+
+	USceneComponent* FirstPersonAttachComponent = FindFirstPersonWeaponAttachComponent();
+	if (!FirstPersonAttachComponent)
+	{
+		CurrentWeapon->SetOwnerVisibilityRules(false, false, true);
+		return;
+	}
+
+	if (!FirstPersonEquippedSocketName.IsNone() && !FirstPersonAttachComponent->DoesSocketExist(FirstPersonEquippedSocketName))
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("First-person weapon socket '%s' does not exist on component '%s'."),
+			*FirstPersonEquippedSocketName.ToString(),
+			*GetNameSafe(FirstPersonAttachComponent));
+
+		CurrentWeapon->SetOwnerVisibilityRules(false, false, true);
+		return;
+	}
+
+	FirstPersonWeapon = SpawnWeaponActor(CurrentWeaponData, CurrentWeaponData.FirstPersonWeaponClass);
+	if (!FirstPersonWeapon)
+	{
+		CurrentWeapon->SetOwnerVisibilityRules(false, false, true);
+		return;
+	}
+
+	FirstPersonWeapon->SetReplicates(false);
+	FirstPersonWeapon->SetWeaponData(CurrentWeaponData);
+	FirstPersonWeapon->EquipToComponent(OwnerCharacter, FirstPersonAttachComponent, FirstPersonEquippedSocketName);
+	FirstPersonWeapon->SetOwnerVisibilityRules(true, false, false);
+	FirstPersonWeapon->SetActorEnableCollision(false);
+
+	CurrentWeapon->SetOwnerVisibilityRules(false, true, true);
 }
 
 void ULMSWeaponComponent::GrantCurrentWeaponAbilities()

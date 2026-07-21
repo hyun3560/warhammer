@@ -171,6 +171,7 @@ protected:
 	void GrantWeaponAbility(TSubclassOf<UGameplayAbility> AbilityClass);
 	ALMSWeaponBase* SpawnWeaponActor(const FWeaponData& WeaponData, TSubclassOf<ALMSWeaponBase> OverrideWeaponClass = nullptr) const;
 	USceneComponent* FindFirstPersonWeaponAttachComponent() const;
+	void RefreshFirstPersonWeaponVisual();
 	void StartMeleeAttack();
 	void StartRangedAttack();
 	void StartBlock();
