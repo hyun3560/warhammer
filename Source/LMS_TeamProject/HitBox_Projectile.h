@@ -18,6 +18,14 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+
+	// 발사 속도 벡터. 서버에서 설정 → 클라이언트에서 OnRep으로 ProjectileMovement에 반영.
+	UPROPERTY(ReplicatedUsing = OnRep_LaunchVelocity)
+	FVector_NetQuantize100 LaunchVelocity;
+
+	UFUNCTION()
+	void OnRep_LaunchVelocity();
 
 public:
 	virtual void Tick(float DeltaTime) override;

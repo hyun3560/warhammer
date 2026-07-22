@@ -4,13 +4,21 @@
 #include "Components/SphereComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "AbilitySystemComponent.h"
+#include "AbilitySystemBlueprintLibrary.h"
+#include "GameplayEffectTypes.h"
 #include "Kismet/GameplayStatics.h"
 #include "DrawDebugHelpers.h"
+#include "Net/UnrealNetwork.h"
 #include "LMSDamageLibrary.h"
 
 AHitBox_Projectile::AHitBox_Projectile()
 {
 	PrimaryActorTick.bCanEverTick = true;
+
+	// 서버에서 스폰한 총알을 클라이언트에도 생성한다.
+	bReplicates = true;
+	// 위치를 매 프레임 복제하지 않고, 각 클라이언트의 ProjectileMovement가 스스로 굴린다 (부드러운 이동).
+	SetReplicateMovement(false);
 
 	InitialSpeed = 3000.f;
 	MaxSpeed = 3000.f;
@@ -45,6 +53,12 @@ AHitBox_Projectile::AHitBox_Projectile()
 void AHitBox_Projectile::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// 클라이언트에서 초기 복제로 LaunchVelocity가 이미 채워진 경우, OnRep이 호출되지 않을 수 있어 여기서 반영한다.
+	if (!HasAuthority() && !LaunchVelocity.IsZero())
+	{
+		OnRep_LaunchVelocity();
+	}
 }
 
 void AHitBox_Projectile::Tick(float DeltaTime)
@@ -68,10 +82,10 @@ void AHitBox_Projectile::Tick(float DeltaTime)
 
 bool AHitBox_Projectile::LaunchToTarget(FVector TargetLocation)
 {
-	FVector LaunchVelocity;
+	FVector OutVelocity;
 	bool bSuccess = UGameplayStatics::SuggestProjectileVelocity_CustomArc(
 		this,
-		LaunchVelocity,
+		OutVelocity,
 		GetActorLocation(),
 		TargetLocation,
 		0.f,       // 기본 중력 사용
@@ -80,8 +94,8 @@ bool AHitBox_Projectile::LaunchToTarget(FVector TargetLocation)
 
 	if (bSuccess)
 	{
-		ProjectileMovement->MaxSpeed = LaunchVelocity.Size();
-		ProjectileMovement->Velocity = LaunchVelocity;
+		ProjectileMovement->MaxSpeed = OutVelocity.Size();
+		ProjectileMovement->Velocity = OutVelocity;
 	}
 
 	return bSuccess;
@@ -93,6 +107,30 @@ void AHitBox_Projectile::LaunchStraight(FVector Direction, float Speed)
 
 	ProjectileMovement->MaxSpeed = Speed;
 	ProjectileMovement->Velocity = NormalizedDirection * Speed;
+
+	// 클라이언트에도 발사 속도를 복제하여 각자 ProjectileMovement가 굴리게 한다.
+	if (HasAuthority())
+	{
+		LaunchVelocity = ProjectileMovement->Velocity;
+	}
+}
+
+void AHitBox_Projectile::OnRep_LaunchVelocity()
+{
+	// 클라이언트에서 서버가 정한 속도로 발사를 재현한다.
+	if (ProjectileMovement)
+	{
+		ProjectileMovement->MaxSpeed = LaunchVelocity.Size();
+		ProjectileMovement->Velocity = LaunchVelocity;
+		ProjectileMovement->UpdateComponentVelocity();
+	}
+}
+
+void AHitBox_Projectile::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(AHitBox_Projectile, LaunchVelocity);
 }
 
 void AHitBox_Projectile::InitializeProjectile(float InRadius, float InDamage, float InInitSpeed, float InMaxSpeed)
@@ -115,11 +153,37 @@ void AHitBox_Projectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
 	}
 
 	AActor* ProjectileOwner = GetOwner();
-	if (!ProjectileOwner || !OtherActor || OtherActor == ProjectileOwner)
+	if (!ProjectileOwner || OtherActor == ProjectileOwner)
 	{
 		return;
 	}
 
-	ULMSDamageLibrary::ApplyDamageEffect(ProjectileOwner, OtherActor, Damage, DamageEffect);
+	// 데미지 적용 대상(ASC 보유)인지에 따라 캐릭터/월드 피격 이펙트를 구분한다.
+	UAbilitySystemComponent* TargetASC =
+		UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(OtherActor);
+	const bool bHitCharacter = TargetASC != nullptr;
+
+	if (bHitCharacter)
+	{
+		ULMSDamageLibrary::ApplyDamageEffect(ProjectileOwner, OtherActor, Damage, DamageEffect);
+	}
+
+	// 충돌 지점/법선을 파라미터에 담아 GameplayCue 실행 (Multicast로 모든 클라이언트에 전파됨)
+	if (UAbilitySystemComponent* OwnerASC =
+		UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ProjectileOwner))
+	{
+		FGameplayCueParameters CueParams;
+		CueParams.Location = Hit.ImpactPoint.IsZero() ? GetActorLocation() : FVector(Hit.ImpactPoint);
+		CueParams.Normal = Hit.ImpactNormal;
+		CueParams.Instigator = ProjectileOwner;
+		CueParams.EffectCauser = this;
+
+		const FGameplayTag CueTag = bHitCharacter
+			? FGameplayTag::RequestGameplayTag(FName("GameplayCue.Projectile.Hit.Character"))
+			: FGameplayTag::RequestGameplayTag(FName("GameplayCue.Projectile.Hit.World"));
+
+		OwnerASC->ExecuteGameplayCue(CueTag, CueParams);
+	}
+
 	Destroy();
 }
