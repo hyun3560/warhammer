@@ -33,6 +33,8 @@ AHitBox_Projectile::AHitBox_Projectile()
 	CollisionComponent->SetCollisionObjectType(ECC_WorldDynamic);
 	CollisionComponent->SetCollisionResponseToAllChannels(ECR_Block);
 	CollisionComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	CollisionComponent->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
+	CollisionComponent->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
 	// Hit 이벤트가 발생하도록 설정 (이게 없으면 OnComponentHit이 호출되지 않음)
 	CollisionComponent->SetNotifyRigidBodyCollision(true);
 	CollisionComponent->SetGenerateOverlapEvents(false);
@@ -162,6 +164,9 @@ void AHitBox_Projectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
 	UAbilitySystemComponent* TargetASC =
 		UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(OtherActor);
 	const bool bHitCharacter = TargetASC != nullptr;
+
+	UE_LOG(LogTemp, Warning, TEXT("[Projectile] OnHit: Other=%s bHitCharacter=%d Impact=%s"),
+		*GetNameSafe(OtherActor), bHitCharacter, *Hit.ImpactPoint.ToString());
 
 	if (bHitCharacter)
 	{
