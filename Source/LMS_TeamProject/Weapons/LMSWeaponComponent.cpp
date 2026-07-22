@@ -7,6 +7,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/DataTable.h"
+#include "Engine/Texture2D.h"
 #include "GameFramework/Character.h"
 #include "Kismet/GameplayStatics.h"
 #include "LMSWeaponBase.h"
@@ -15,19 +16,23 @@
 #include "LMSWeaponSkillAbility.h"
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
+#include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
+#include "../LMSDamageLibrary.h"
 #include "../LMSGameplayAbility.h"
 
 ULMSWeaponComponent::ULMSWeaponComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
+	SetIsReplicatedByDefault(true);
 }
 
 void ULMSWeaponComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (!DefaultWeaponRowName.IsNone())
+	AActor* OwnerActor = GetOwner();
+	if (OwnerActor && OwnerActor->HasAuthority() && !DefaultWeaponRowName.IsNone())
 	{
 		EquipWeaponByRowName(DefaultWeaponRowName);
 	}
@@ -50,43 +55,10 @@ bool ULMSWeaponComponent::EquipWeaponFromData(const FWeaponData& WeaponData)
 	}
 
 	CurrentWeaponData = WeaponData;
+	EquippedWeaponID = CurrentWeaponData.WeaponID;
 	CurrentWeapon->SetWeaponData(WeaponData);
 	CurrentWeapon->Equip(OwnerCharacter, EquippedSocketName);
-
-	if (bSpawnFirstPersonWeaponVisual)
-	{
-		USceneComponent* FirstPersonAttachComponent = FindFirstPersonWeaponAttachComponent();
-		if (FirstPersonAttachComponent)
-		{
-			if (!FirstPersonEquippedSocketName.IsNone() && !FirstPersonAttachComponent->DoesSocketExist(FirstPersonEquippedSocketName))
-			{
-				UE_LOG(
-					LogTemp,
-					Warning,
-					TEXT("First-person weapon socket '%s' does not exist on component '%s'."),
-					*FirstPersonEquippedSocketName.ToString(),
-					*GetNameSafe(FirstPersonAttachComponent));
-			}
-			else
-			{
-				FirstPersonWeapon = SpawnWeaponActor(WeaponData);
-				if (FirstPersonWeapon)
-				{
-					FirstPersonWeapon->SetReplicates(false);
-					FirstPersonWeapon->SetWeaponData(WeaponData);
-					FirstPersonWeapon->EquipToComponent(OwnerCharacter, FirstPersonAttachComponent, FirstPersonEquippedSocketName);
-					FirstPersonWeapon->SetOwnerVisibilityRules(true, false, false);
-					FirstPersonWeapon->SetActorEnableCollision(false);
-					CurrentWeapon->SetOwnerVisibilityRules(false, true, true);
-				}
-			}
-		}
-	}
-
-	if (!FirstPersonWeapon)
-	{
-		CurrentWeapon->SetOwnerVisibilityRules(false, false, true);
-	}
+	RefreshFirstPersonWeaponVisual();
 
 	AmmoInMagazine = CurrentWeaponData.MagazineSize;
 	ReserveAmmo = CurrentWeaponData.MaxReserveAmmo;
@@ -95,6 +67,7 @@ bool ULMSWeaponComponent::EquipWeaponFromData(const FWeaponData& WeaponData)
 	bIsAiming = false;
 	ResetCombo();
 	BroadcastAmmoChanged();
+	BroadcastWeaponHUDChanged();
 
 	GrantCurrentWeaponAbilities();
 
@@ -166,6 +139,7 @@ void ULMSWeaponComponent::UnequipCurrentWeapon()
 	}
 
 	CurrentWeaponData = FWeaponData();
+	EquippedWeaponID = NAME_None;
 	AmmoInMagazine = 0;
 	ReserveAmmo = 0;
 	bIsReloading = false;
@@ -176,7 +150,20 @@ void ULMSWeaponComponent::UnequipCurrentWeapon()
 	SkillCooldownEndTime = 0.f;
 	SkillCooldownDuration = 0.f;
 	BroadcastAmmoChanged();
+	BroadcastWeaponHUDChanged();
 	BroadcastSkillCooldownChanged(0.f, 0.f);
+}
+
+void ULMSWeaponComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(ULMSWeaponComponent, CurrentWeapon);
+	DOREPLIFETIME(ULMSWeaponComponent, EquippedWeaponID);
+	DOREPLIFETIME(ULMSWeaponComponent, AmmoInMagazine);
+	DOREPLIFETIME(ULMSWeaponComponent, ReserveAmmo);
+	DOREPLIFETIME(ULMSWeaponComponent, SkillCooldownEndTime);
+	DOREPLIFETIME(ULMSWeaponComponent, SkillCooldownDuration);
 }
 
 void ULMSWeaponComponent::StartAttack()
@@ -289,6 +276,11 @@ void ULMSWeaponComponent::BroadcastAmmoChanged()
 	OnAmmoChanged.Broadcast(AmmoInMagazine, ReserveAmmo);
 }
 
+void ULMSWeaponComponent::BroadcastWeaponHUDChanged()
+{
+	OnWeaponHUDChanged.Broadcast(ResolveWeaponHUDIcon(), ShouldShowAmmoOnHUD());
+}
+
 void ULMSWeaponComponent::StartSkillCooldown(float CurrentCooldown, float MaxCooldown)
 {
 	UWorld* World = GetWorld();
@@ -315,6 +307,137 @@ void ULMSWeaponComponent::StartSkillCooldown(float CurrentCooldown, float MaxCoo
 		&ULMSWeaponComponent::UpdateSkillCooldown,
 		0.05f,
 		true);
+}
+
+void ULMSWeaponComponent::CacheWeaponDataByID(FName WeaponID)
+{
+	if (!WeaponDataTable || WeaponID.IsNone())
+	{
+		CurrentWeaponData = FWeaponData();
+		return;
+	}
+
+	if (const FWeaponData* WeaponData = WeaponDataTable->FindRow<FWeaponData>(WeaponID, TEXT("CacheWeaponDataByID"), false))
+	{
+		CurrentWeaponData = *WeaponData;
+		return;
+	}
+
+	TArray<FWeaponData*> WeaponRows;
+	WeaponDataTable->GetAllRows<FWeaponData>(TEXT("CacheWeaponDataByID"), WeaponRows);
+
+	for (const FWeaponData* WeaponData : WeaponRows)
+	{
+		if (WeaponData && WeaponData->WeaponID == WeaponID)
+		{
+			CurrentWeaponData = *WeaponData;
+			return;
+		}
+	}
+
+	CurrentWeaponData = FWeaponData();
+}
+
+void ULMSWeaponComponent::RestartReplicatedSkillCooldownTimer()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	World->GetTimerManager().ClearTimer(SkillCooldownTimerHandle);
+
+	const float CurrentCooldown = FMath::Max(0.f, SkillCooldownEndTime - World->GetTimeSeconds());
+	BroadcastSkillCooldownChanged(CurrentCooldown, SkillCooldownDuration);
+
+	if (CurrentCooldown > 0.f && SkillCooldownDuration > 0.f)
+	{
+		World->GetTimerManager().SetTimer(
+			SkillCooldownTimerHandle,
+			this,
+			&ULMSWeaponComponent::UpdateSkillCooldown,
+			0.05f,
+			true);
+	}
+}
+
+void ULMSWeaponComponent::OnRep_EquippedWeaponID()
+{
+	CacheWeaponDataByID(EquippedWeaponID);
+
+	if (CurrentWeapon)
+	{
+		CurrentWeapon->SetWeaponData(CurrentWeaponData);
+	}
+
+	BroadcastAmmoChanged();
+	BroadcastWeaponHUDChanged();
+	BroadcastSkillCooldownChanged(0.f, 0.f);
+}
+
+void ULMSWeaponComponent::OnRep_CurrentWeapon()
+{
+	if (!CurrentWeapon)
+	{
+		if (FirstPersonWeapon)
+		{
+			FirstPersonWeapon->Unequip();
+			FirstPersonWeapon->Destroy();
+			FirstPersonWeapon = nullptr;
+		}
+
+		BroadcastWeaponHUDChanged();
+		return;
+	}
+
+	CacheWeaponDataByID(EquippedWeaponID);
+	CurrentWeapon->SetWeaponData(CurrentWeaponData);
+
+	if (ACharacter* OwnerCharacter = GetOwnerCharacter())
+	{
+		CurrentWeapon->Equip(OwnerCharacter, EquippedSocketName);
+	}
+
+	RefreshFirstPersonWeaponVisual();
+	BroadcastWeaponHUDChanged();
+}
+
+void ULMSWeaponComponent::OnRep_Ammo()
+{
+	BroadcastAmmoChanged();
+}
+
+UTexture2D* ULMSWeaponComponent::ResolveWeaponHUDIcon() const
+{
+	if (CurrentWeaponData.HUDIcon)
+	{
+		return CurrentWeaponData.HUDIcon;
+	}
+
+	const FString WeaponIDString = CurrentWeaponData.WeaponID.ToString();
+	const TCHAR* FallbackPath = nullptr;
+
+	if (WeaponIDString.Equals(TEXT("Rifle"), ESearchCase::IgnoreCase))
+	{
+		FallbackPath = TEXT("/Game/LJH/Image/Gun.Gun");
+	}
+	else if (WeaponIDString.Equals(TEXT("Hammer"), ESearchCase::IgnoreCase))
+	{
+		FallbackPath = TEXT("/Game/LJH/Image/Hammer.Hammer");
+	}
+
+	return FallbackPath ? LoadObject<UTexture2D>(nullptr, FallbackPath) : nullptr;
+}
+
+bool ULMSWeaponComponent::ShouldShowAmmoOnHUD() const
+{
+	return CurrentWeaponData.bShowAmmoOnHUD || CurrentWeaponData.WeaponType == ELMSWeaponType::Ranged;
+}
+
+void ULMSWeaponComponent::OnRep_SkillCooldown()
+{
+	RestartReplicatedSkillCooldownTimer();
 }
 
 void ULMSWeaponComponent::UpdateSkillCooldown()
@@ -358,11 +481,12 @@ UAbilitySystemComponent* ULMSWeaponComponent::GetOwnerAbilitySystemComponent() c
 	return AbilitySystemOwner ? AbilitySystemOwner->GetAbilitySystemComponent() : nullptr;
 }
 
-ALMSWeaponBase* ULMSWeaponComponent::SpawnWeaponActor(const FWeaponData& WeaponData) const
+ALMSWeaponBase* ULMSWeaponComponent::SpawnWeaponActor(const FWeaponData& WeaponData, TSubclassOf<ALMSWeaponBase> OverrideWeaponClass) const
 {
 	ACharacter* OwnerCharacter = GetOwnerCharacter();
 	UWorld* World = GetWorld();
-	if (!OwnerCharacter || !World || !WeaponData.WeaponClass)
+	TSubclassOf<ALMSWeaponBase> WeaponClassToSpawn = OverrideWeaponClass ? OverrideWeaponClass : WeaponData.WeaponClass;
+	if (!OwnerCharacter || !World || !WeaponClassToSpawn)
 	{
 		return nullptr;
 	}
@@ -371,7 +495,7 @@ ALMSWeaponBase* ULMSWeaponComponent::SpawnWeaponActor(const FWeaponData& WeaponD
 	SpawnParams.Owner = OwnerCharacter;
 	SpawnParams.Instigator = OwnerCharacter;
 
-	return World->SpawnActor<ALMSWeaponBase>(WeaponData.WeaponClass, SpawnParams);
+	return World->SpawnActor<ALMSWeaponBase>(WeaponClassToSpawn, SpawnParams);
 }
 
 USceneComponent* ULMSWeaponComponent::FindFirstPersonWeaponAttachComponent() const
@@ -417,6 +541,63 @@ USceneComponent* ULMSWeaponComponent::FindFirstPersonWeaponAttachComponent() con
 		*GetNameSafe(OwnerCharacter));
 
 	return nullptr;
+}
+
+void ULMSWeaponComponent::RefreshFirstPersonWeaponVisual()
+{
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (!OwnerCharacter || !CurrentWeapon)
+	{
+		return;
+	}
+
+	if (FirstPersonWeapon)
+	{
+		FirstPersonWeapon->Unequip();
+		FirstPersonWeapon->Destroy();
+		FirstPersonWeapon = nullptr;
+	}
+
+	if (!OwnerCharacter->IsLocallyControlled() || !bSpawnFirstPersonWeaponVisual)
+	{
+		CurrentWeapon->SetOwnerVisibilityRules(false, false, true);
+		return;
+	}
+
+	USceneComponent* FirstPersonAttachComponent = FindFirstPersonWeaponAttachComponent();
+	if (!FirstPersonAttachComponent)
+	{
+		CurrentWeapon->SetOwnerVisibilityRules(false, false, true);
+		return;
+	}
+
+	if (!FirstPersonEquippedSocketName.IsNone() && !FirstPersonAttachComponent->DoesSocketExist(FirstPersonEquippedSocketName))
+	{
+		UE_LOG(
+			LogTemp,
+			Warning,
+			TEXT("First-person weapon socket '%s' does not exist on component '%s'."),
+			*FirstPersonEquippedSocketName.ToString(),
+			*GetNameSafe(FirstPersonAttachComponent));
+
+		CurrentWeapon->SetOwnerVisibilityRules(false, false, true);
+		return;
+	}
+
+	FirstPersonWeapon = SpawnWeaponActor(CurrentWeaponData, CurrentWeaponData.FirstPersonWeaponClass);
+	if (!FirstPersonWeapon)
+	{
+		CurrentWeapon->SetOwnerVisibilityRules(false, false, true);
+		return;
+	}
+
+	FirstPersonWeapon->SetReplicates(false);
+	FirstPersonWeapon->SetWeaponData(CurrentWeaponData);
+	FirstPersonWeapon->EquipToComponent(OwnerCharacter, FirstPersonAttachComponent, FirstPersonEquippedSocketName);
+	FirstPersonWeapon->SetOwnerVisibilityRules(true, false, false);
+	FirstPersonWeapon->SetActorEnableCollision(false);
+
+	CurrentWeapon->SetOwnerVisibilityRules(false, true, true);
 }
 
 void ULMSWeaponComponent::GrantCurrentWeaponAbilities()
@@ -761,12 +942,7 @@ void ULMSWeaponComponent::HandleWeaponTraceHit(const FHitResult& Hit)
 	}
 
 	const float TraceDamage = CurrentWeaponData.Damage * ActiveWeaponTraceDamageMultiplier;
-	UGameplayStatics::ApplyDamage(
-		HitActor,
-		TraceDamage,
-		OwnerCharacter->GetController(),
-		CurrentWeapon ? Cast<AActor>(CurrentWeapon) : Cast<AActor>(OwnerCharacter),
-		UDamageType::StaticClass());
+	ULMSDamageLibrary::ApplyDamageEffect(OwnerCharacter, HitActor, TraceDamage, CurrentWeaponData.DamageEffect);
 }
 
 void ULMSWeaponComponent::FireRangedShot(float DamageMultiplier, float RangeMultiplier, bool bDrawDebugTrace)
@@ -838,7 +1014,32 @@ void ULMSWeaponComponent::StartComboAttack(int32 StartingComboIndex)
 
 bool ULMSWeaponComponent::HandleMeleeComboInput(UAnimInstance* AnimInstance, UAnimMontage* ComboMontage, const TArray<FName>& ComboSectionNames)
 {
-	if (!AnimInstance || !ComboMontage || ComboSectionNames.IsEmpty())
+	return HandleMeleeComboInputInternal(AnimInstance, ComboMontage, nullptr, nullptr, ComboSectionNames);
+}
+
+bool ULMSWeaponComponent::HandleMeleeComboInputLinked(
+	UAnimInstance* PrimaryAnimInstance,
+	UAnimMontage* PrimaryComboMontage,
+	UAnimInstance* LinkedAnimInstance,
+	UAnimMontage* LinkedComboMontage,
+	const TArray<FName>& ComboSectionNames)
+{
+	return HandleMeleeComboInputInternal(
+		PrimaryAnimInstance,
+		PrimaryComboMontage,
+		LinkedAnimInstance,
+		LinkedComboMontage,
+		ComboSectionNames);
+}
+
+bool ULMSWeaponComponent::HandleMeleeComboInputInternal(
+	UAnimInstance* PrimaryAnimInstance,
+	UAnimMontage* PrimaryComboMontage,
+	UAnimInstance* LinkedAnimInstance,
+	UAnimMontage* LinkedComboMontage,
+	const TArray<FName>& ComboSectionNames)
+{
+	if (!PrimaryAnimInstance || !PrimaryComboMontage || ComboSectionNames.IsEmpty())
 	{
 		return false;
 	}
@@ -871,18 +1072,33 @@ bool ULMSWeaponComponent::HandleMeleeComboInput(UAnimInstance* AnimInstance, UAn
 			return false;
 		}
 
-		const float MontageLength = AnimInstance->Montage_Play(ComboMontage, 1.f);
+		const float MontageLength = PrimaryAnimInstance->Montage_Play(PrimaryComboMontage, 1.f);
 		if (MontageLength <= 0.f)
 		{
 			return false;
 		}
 
-		ActiveComboAnimInstance = AnimInstance;
-		ActiveComboMontage = ComboMontage;
+		ActiveComboAnimInstance = PrimaryAnimInstance;
+		ActiveComboMontage = PrimaryComboMontage;
+		ActiveLinkedComboAnimInstance.Reset();
+		ActiveLinkedComboMontage.Reset();
 		ActiveComboSectionNames = ComboSectionNames;
 
 		StartComboAttack(1);
-		AnimInstance->Montage_JumpToSection(FirstSectionName, ComboMontage);
+
+		PrimaryAnimInstance->Montage_JumpToSection(FirstSectionName, PrimaryComboMontage);
+
+		if (LinkedAnimInstance && LinkedComboMontage)
+		{
+			const float LinkedMontageLength = LinkedAnimInstance->Montage_Play(LinkedComboMontage, 1.f);
+			if (LinkedMontageLength > 0.f)
+			{
+				ActiveLinkedComboAnimInstance = LinkedAnimInstance;
+				ActiveLinkedComboMontage = LinkedComboMontage;
+				LinkedAnimInstance->Montage_JumpToSection(FirstSectionName, LinkedComboMontage);
+			}
+		}
+
 		return true;
 	}
 
@@ -939,6 +1155,18 @@ bool ULMSWeaponComponent::QueueBufferedComboSection()
 	}
 
 	ActiveAnimInstance->Montage_SetNextSection(CurrentSectionName, NextSectionName, ActiveMontage);
+
+	if (UAnimInstance* LinkedAnimInstance = ActiveLinkedComboAnimInstance.Get())
+	{
+		if (UAnimMontage* LinkedMontage = ActiveLinkedComboMontage.Get())
+		{
+			if (LinkedAnimInstance->Montage_IsPlaying(LinkedMontage))
+			{
+				LinkedAnimInstance->Montage_SetNextSection(CurrentSectionName, NextSectionName, LinkedMontage);
+			}
+		}
+	}
+
 	bComboTransitionQueued = true;
 	return true;
 }
@@ -950,6 +1178,13 @@ void ULMSWeaponComponent::StopActiveComboMontage(float BlendOutTime)
 	if (ActiveAnimInstance && ActiveMontage && ActiveAnimInstance->Montage_IsPlaying(ActiveMontage))
 	{
 		ActiveAnimInstance->Montage_Stop(BlendOutTime, ActiveMontage);
+	}
+
+	UAnimInstance* LinkedAnimInstance = ActiveLinkedComboAnimInstance.Get();
+	UAnimMontage* LinkedMontage = ActiveLinkedComboMontage.Get();
+	if (LinkedAnimInstance && LinkedMontage && LinkedAnimInstance->Montage_IsPlaying(LinkedMontage))
+	{
+		LinkedAnimInstance->Montage_Stop(BlendOutTime, LinkedMontage);
 	}
 }
 
@@ -1033,6 +1268,17 @@ bool ULMSWeaponComponent::QueueComboSection(UAnimInstance* AnimInstance, UAnimMo
 	}
 
 	AnimInstance->Montage_SetNextSection(CurrentSection, NextSection, ComboMontage);
+	if (UAnimInstance* LinkedAnimInstance = ActiveLinkedComboAnimInstance.Get())
+	{
+		if (UAnimMontage* LinkedMontage = ActiveLinkedComboMontage.Get())
+		{
+			if (LinkedAnimInstance->Montage_IsPlaying(LinkedMontage))
+			{
+				LinkedAnimInstance->Montage_SetNextSection(CurrentSection, NextSection, LinkedMontage);
+			}
+		}
+	}
+
 	bComboInputBuffered = true;
 	bComboTransitionQueued = true;
 	CurrentComboIndex = FMath::Max(NextComboIndex, CurrentComboIndex + 1);
@@ -1055,6 +1301,8 @@ void ULMSWeaponComponent::ResetCombo()
 	CurrentComboIndex = 0;
 	ActiveComboAnimInstance.Reset();
 	ActiveComboMontage.Reset();
+	ActiveLinkedComboAnimInstance.Reset();
+	ActiveLinkedComboMontage.Reset();
 	ActiveComboSectionNames.Reset();
 }
 

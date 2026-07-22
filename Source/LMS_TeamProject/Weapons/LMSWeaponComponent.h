@@ -14,9 +14,11 @@ class UAnimMontage;
 class UCameraComponent;
 class UDataTable;
 class USceneComponent;
+class UTexture2D;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnWeaponAmmoChanged, int32, AmmoInMagazine, int32, ReserveAmmo);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnWeaponSkillCooldownChanged, float, CurrentCooldown, float, MaxCooldown);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnWeaponHUDChanged, UTexture2D*, WeaponIcon, bool, bShowAmmo);
 
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class LMS_TEAMPROJECT_API ULMSWeaponComponent : public UActorComponent
@@ -77,11 +79,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	bool IsAiming() const { return bIsAiming; }
 
+	UFUNCTION(BlueprintPure, Category = "Weapon|HUD")
+	UTexture2D* GetCurrentWeaponHUDIcon() const { return ResolveWeaponHUDIcon(); }
+
+	UFUNCTION(BlueprintPure, Category = "Weapon|HUD")
+	bool ShouldDisplayAmmoOnHUD() const { return ShouldShowAmmoOnHUD(); }
+
 	UPROPERTY(BlueprintAssignable, Category = "Weapon|Ammo")
 	FOnWeaponAmmoChanged OnAmmoChanged;
 
 	UPROPERTY(BlueprintAssignable, Category = "Weapon|Skill")
 	FOnWeaponSkillCooldownChanged OnSkillCooldownChanged;
+
+	UPROPERTY(BlueprintAssignable, Category = "Weapon|HUD")
+	FOnWeaponHUDChanged OnWeaponHUDChanged;
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Ammo")
 	bool TryConsumeAmmo(int32 AmmoCost = 1, bool bReloadIfEmpty = true);
@@ -111,6 +122,14 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Combo")
 	bool HandleMeleeComboInput(UAnimInstance* AnimInstance, UAnimMontage* ComboMontage, const TArray<FName>& ComboSectionNames);
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Combo")
+	bool HandleMeleeComboInputLinked(
+		UAnimInstance* PrimaryAnimInstance,
+		UAnimMontage* PrimaryComboMontage,
+		UAnimInstance* LinkedAnimInstance,
+		UAnimMontage* LinkedComboMontage,
+		const TArray<FName>& ComboSectionNames);
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Combo")
 	void NotifyComboSectionBegin(int32 ComboIndex);
@@ -150,6 +169,7 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	ACharacter* GetOwnerCharacter() const;
 	UCameraComponent* GetOwnerCameraComponent() const;
@@ -157,8 +177,9 @@ protected:
 	void GrantCurrentWeaponAbilities();
 	void ClearGrantedWeaponAbilities();
 	void GrantWeaponAbility(TSubclassOf<UGameplayAbility> AbilityClass);
-	ALMSWeaponBase* SpawnWeaponActor(const FWeaponData& WeaponData) const;
+	ALMSWeaponBase* SpawnWeaponActor(const FWeaponData& WeaponData, TSubclassOf<ALMSWeaponBase> OverrideWeaponClass = nullptr) const;
 	USceneComponent* FindFirstPersonWeaponAttachComponent() const;
+	void RefreshFirstPersonWeaponVisual();
 	void StartMeleeAttack();
 	void StartRangedAttack();
 	void StartBlock();
@@ -169,14 +190,37 @@ protected:
 	void FinishReload();
 	void ClearMeleeDamageBoost();
 	void BroadcastAmmoChanged();
+	void BroadcastWeaponHUDChanged();
 	void UpdateSkillCooldown();
 	void BroadcastSkillCooldownChanged(float CurrentCooldown, float MaxCooldown);
+	void CacheWeaponDataByID(FName WeaponID);
+	UTexture2D* ResolveWeaponHUDIcon() const;
+	bool ShouldShowAmmoOnHUD() const;
+	void RestartReplicatedSkillCooldownTimer();
 	ALMSWeaponBase* GetWeaponTraceActor() const;
 	bool GetWeaponTraceSocketLocations(FVector& OutStart, FVector& OutEnd) const;
 	void TraceWeaponSegment(const FVector& PreviousPoint, const FVector& CurrentPoint, FCollisionQueryParams& QueryParams);
 	void HandleWeaponTraceHit(const FHitResult& Hit);
+	bool HandleMeleeComboInputInternal(
+		UAnimInstance* PrimaryAnimInstance,
+		UAnimMontage* PrimaryComboMontage,
+		UAnimInstance* LinkedAnimInstance,
+		UAnimMontage* LinkedComboMontage,
+		const TArray<FName>& ComboSectionNames);
 	bool QueueBufferedComboSection();
 	void StopActiveComboMontage(float BlendOutTime = 0.15f);
+
+	UFUNCTION()
+	void OnRep_EquippedWeaponID();
+
+	UFUNCTION()
+	void OnRep_CurrentWeapon();
+
+	UFUNCTION()
+	void OnRep_Ammo();
+
+	UFUNCTION()
+	void OnRep_SkillCooldown();
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	UDataTable* WeaponDataTable;
@@ -223,7 +267,7 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Debug")
 	bool bDrawDebugRangedTrace = true;
 
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
+	UPROPERTY(ReplicatedUsing = OnRep_CurrentWeapon, VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
 	ALMSWeaponBase* CurrentWeapon;
 
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|First Person")
@@ -232,10 +276,13 @@ protected:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
 	FWeaponData CurrentWeaponData;
 
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|Ammo")
+	UPROPERTY(ReplicatedUsing = OnRep_EquippedWeaponID, VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon")
+	FName EquippedWeaponID = NAME_None;
+
+	UPROPERTY(ReplicatedUsing = OnRep_Ammo, VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|Ammo")
 	int32 AmmoInMagazine = 0;
 
-	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|Ammo")
+	UPROPERTY(ReplicatedUsing = OnRep_Ammo, VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|Ammo")
 	int32 ReserveAmmo = 0;
 
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "Weapon|Ammo")
@@ -269,7 +316,10 @@ protected:
 	FTimerHandle SkillCooldownTimerHandle;
 	FTimerHandle MeleeDamageBoostTimerHandle;
 
+	UPROPERTY(ReplicatedUsing = OnRep_SkillCooldown)
 	float SkillCooldownEndTime = 0.f;
+
+	UPROPERTY(ReplicatedUsing = OnRep_SkillCooldown)
 	float SkillCooldownDuration = 0.f;
 	float MeleeDamageBoostMultiplier = 1.f;
 	int32 RemainingBoostedWeaponTraces = 0;
@@ -286,5 +336,7 @@ protected:
 
 	TWeakObjectPtr<UAnimInstance> ActiveComboAnimInstance;
 	TWeakObjectPtr<UAnimMontage> ActiveComboMontage;
+	TWeakObjectPtr<UAnimInstance> ActiveLinkedComboAnimInstance;
+	TWeakObjectPtr<UAnimMontage> ActiveLinkedComboMontage;
 	TArray<FName> ActiveComboSectionNames;
 };

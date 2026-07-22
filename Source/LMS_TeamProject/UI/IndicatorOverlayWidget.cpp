@@ -34,7 +34,6 @@ void UIndicatorOverlayWidget::NativeTick(const FGeometry& MyGeometry, float InDe
 
 	const TArray<FLMSIndicatorScreenData>& IndicatorDataList = IndicatorManager->GetIndicatorDataList();
 
-	// 필요한 만큼 풀을 확장합니다 (이미 있는 엔트리는 재사용).
 	while (EntryPool.Num() < IndicatorDataList.Num())
 	{
 		UIndicatorEntryWidget* NewEntry = CreateWidget<UIndicatorEntryWidget>(GetOwningPlayer(), IndicatorEntryClass);
@@ -44,7 +43,6 @@ void UIndicatorOverlayWidget::NativeTick(const FGeometry& MyGeometry, float InDe
 		}
 		if (UCanvasPanelSlot* NewSlot = RootCanvas->AddChildToCanvas(NewEntry))
 		{
-			// 아이콘 중심이 계산된 스크린 좌표에 오도록 정렬 기준점을 중앙으로 맞춥니다.
 			NewSlot->SetAlignment(FVector2D(0.5f, 0.5f));
 		}
 		EntryPool.Add(NewEntry);
@@ -59,7 +57,6 @@ void UIndicatorOverlayWidget::NativeTick(const FGeometry& MyGeometry, float InDe
 		}
 		if (Index >= IndicatorDataList.Num())
 		{
-			// 이번 프레임엔 쓰이지 않는 엔트리는 숨겨서 재사용을 대기합니다.
 			Entry->SetVisibility(ESlateVisibility::Collapsed);
 			continue;
 		}
@@ -70,8 +67,6 @@ void UIndicatorOverlayWidget::NativeTick(const FGeometry& MyGeometry, float InDe
 
 		if (UCanvasPanelSlot* CanvasSlot = Cast<UCanvasPanelSlot>(Entry->Slot))
 		{
-			// ProjectWorldLocationToScreen은 실제 픽셀 좌표를 반환하지만,
-			// UMG CanvasPanelSlot은 DPI 스케일이 적용된 뷰포트 좌표를 기대하므로 나눠서 보정합니다.
 			const float ViewportScale = UWidgetLayoutLibrary::GetViewportScale(this);
 			const FVector2D CorrectedPosition = (ViewportScale > KINDA_SMALL_NUMBER)
 				? (Data.ScreenPosition / ViewportScale)

@@ -125,12 +125,29 @@ void ULMSCombatHUDPresenterComponent::BindWeaponDelegates()
 		&ULMSCombatHUDPresenterComponent::HandleSkillCooldownChanged
 	);
 
+	CachedWeaponComponent->OnWeaponHUDChanged.AddDynamic(
+		this,
+		&ULMSCombatHUDPresenterComponent::HandleWeaponHUDChanged
+	);
+
 	bWeaponDelegatesBound = true;
 }
 
 void ULMSCombatHUDPresenterComponent::HandleAmmoChanged(int32 CurrentAmmo, int32 ReserveAmmo)
 {
 	UpdateAmmoUI(CurrentAmmo, ReserveAmmo);
+	if (CachedWeaponComponent)
+	{
+		UpdateWeaponInfoUI(
+			CachedWeaponComponent->GetCurrentWeaponHUDIcon(),
+			CachedWeaponComponent->ShouldDisplayAmmoOnHUD()
+		);
+	}
+}
+
+void ULMSCombatHUDPresenterComponent::HandleWeaponHUDChanged(UTexture2D* WeaponIcon, bool bShowAmmo)
+{
+	UpdateWeaponInfoUI(WeaponIcon, bShowAmmo);
 }
 
 // 무기 스킬 쿨타임이 바뀌면 HUD 스킬 쿨타임 UI를 갱신합니다.
@@ -230,6 +247,10 @@ void ULMSCombatHUDPresenterComponent::UpdateAllCombatHUD()
 		UpdateAmmoUI(
 			CachedWeaponComponent->GetAmmoInMagazine(),
 			CachedWeaponComponent->GetReserveAmmo()
+		);
+		UpdateWeaponInfoUI(
+			CachedWeaponComponent->GetCurrentWeaponHUDIcon(),
+			CachedWeaponComponent->ShouldDisplayAmmoOnHUD()
 		);
 	}
 }
@@ -345,6 +366,16 @@ void ULMSCombatHUDPresenterComponent::UpdateAmmoUI(int32 CurrentAmmo, int32 Rese
 	}
 
 	CombatHUDWidget->SetAmmo(CurrentAmmo, ReserveAmmo);
+}
+
+void ULMSCombatHUDPresenterComponent::UpdateWeaponInfoUI(UTexture2D* WeaponIcon, bool bShowAmmo) const
+{
+	if (!CombatHUDWidget)
+	{
+		return;
+	}
+
+	CombatHUDWidget->SetWeaponInfo(WeaponIcon, bShowAmmo);
 }
 
 void ULMSCombatHUDPresenterComponent::ShowInteractionPrompt(
