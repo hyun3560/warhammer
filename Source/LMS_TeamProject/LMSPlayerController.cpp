@@ -42,7 +42,7 @@ void ALMSPlayerController::BeginPlay()
 		TeamStatusComponent->InitializeTeamStatus();
 	}
 
-	ShowWeaponSelectionUI();
+	//ShowWeaponSelectionUI();
 }
 
 void ALMSPlayerController::OnRep_PlayerState()

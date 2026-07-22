@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #include "HitBox_Projectile.h"
 #include "Components/SphereComponent.h"
@@ -9,6 +9,7 @@
 #include "Ememy/EnemyTableRow.h"
 #include "LMS_TeamProjectCharacter.h"
 #include "Kismet/GameplayStatics.h"
+#include "LMSDamageLibrary.h"
 
 AHitBox_Projectile::AHitBox_Projectile()
 {
@@ -77,26 +78,26 @@ void AHitBox_Projectile::InitializeProjectile(float InRadius, float InInitSpeed,
 void AHitBox_Projectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	ABaseEnemyCharacter* Enemy = Cast<ABaseEnemyCharacter>(Owner);
-	if (Enemy)
+	if (!HasAuthority())
 	{
-		const FEnemyTableRow* Data= Enemy->GetEnemyData();
-		float Damage = Data ? Data->Damage : 0;
-		ALMS_TeamProjectCharacter* Target = Cast<ALMS_TeamProjectCharacter>(OtherActor);
-		// todo : TakeDamage
-		if (Target)
-		{
-			Target->TakeDamage(Damage);
-			Destroy();
-		}
+		return;
 	}
-	/*else
+
+	ABaseEnemyCharacter* Enemy = Cast<ABaseEnemyCharacter>(Owner);
+	if (!Enemy)
 	{
-		ALMS_TeamProjectCharacter* Character = Cast<ALMS_TeamProjectCharacter>(Owner);
-		ULMSWeaponComponent* WeaponData = Character->GetWeaponComponent();
-		if (WeaponData)
-		{
-			WeaponData
-		}
-	}*/
+		return;
+	}
+
+	ALMS_TeamProjectCharacter* Target = Cast<ALMS_TeamProjectCharacter>(OtherActor);
+	if (!Target)
+	{
+		return;
+	}
+
+	const FEnemyTableRow* Data = Enemy->GetEnemyData();
+	const float Damage = Data ? Data->Damage : 0.f;
+
+	ULMSDamageLibrary::ApplyDamageEffect(Enemy, Target, Damage, DamageEffect);
+	Destroy();
 }
