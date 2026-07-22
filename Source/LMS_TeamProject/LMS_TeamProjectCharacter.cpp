@@ -225,29 +225,7 @@ void ALMS_TeamProjectCharacter::OnAbilityInputPressed(ELMSAbilityInputID InputID
 	if (AbilitySystemComponent)
 	{
 		const int32 InputIDValue = static_cast<int32>(InputID);
-		bool bFoundMatchingAbility = false;
-
 		AbilitySystemComponent->AbilityLocalInputPressed(InputIDValue);
-
-		for (const FGameplayAbilitySpec& AbilitySpec : AbilitySystemComponent->GetActivatableAbilities())
-		{
-			if (AbilitySpec.InputID != InputIDValue || !AbilitySpec.Ability)
-			{
-				continue;
-			}
-
-			bFoundMatchingAbility = true;
-
-			if (!AbilitySpec.IsActive())
-			{
-				AbilitySystemComponent->TryActivateAbility(AbilitySpec.Handle);
-			}
-		}
-
-		if (!bFoundMatchingAbility)
-		{
-			UE_LOG(LogTemplateCharacter, Warning, TEXT("No ability found for input: %d"), InputIDValue);
-		}
 	}
 	else
 	{
