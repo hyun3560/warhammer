@@ -1018,7 +1018,32 @@ void ULMSWeaponComponent::StartComboAttack(int32 StartingComboIndex)
 
 bool ULMSWeaponComponent::HandleMeleeComboInput(UAnimInstance* AnimInstance, UAnimMontage* ComboMontage, const TArray<FName>& ComboSectionNames)
 {
-	if (!AnimInstance || !ComboMontage || ComboSectionNames.IsEmpty())
+	return HandleMeleeComboInputInternal(AnimInstance, ComboMontage, nullptr, nullptr, ComboSectionNames);
+}
+
+bool ULMSWeaponComponent::HandleMeleeComboInputLinked(
+	UAnimInstance* PrimaryAnimInstance,
+	UAnimMontage* PrimaryComboMontage,
+	UAnimInstance* LinkedAnimInstance,
+	UAnimMontage* LinkedComboMontage,
+	const TArray<FName>& ComboSectionNames)
+{
+	return HandleMeleeComboInputInternal(
+		PrimaryAnimInstance,
+		PrimaryComboMontage,
+		LinkedAnimInstance,
+		LinkedComboMontage,
+		ComboSectionNames);
+}
+
+bool ULMSWeaponComponent::HandleMeleeComboInputInternal(
+	UAnimInstance* PrimaryAnimInstance,
+	UAnimMontage* PrimaryComboMontage,
+	UAnimInstance* LinkedAnimInstance,
+	UAnimMontage* LinkedComboMontage,
+	const TArray<FName>& ComboSectionNames)
+{
+	if (!PrimaryAnimInstance || !PrimaryComboMontage || ComboSectionNames.IsEmpty())
 	{
 		return false;
 	}
@@ -1051,18 +1076,33 @@ bool ULMSWeaponComponent::HandleMeleeComboInput(UAnimInstance* AnimInstance, UAn
 			return false;
 		}
 
-		const float MontageLength = AnimInstance->Montage_Play(ComboMontage, 1.f);
+		const float MontageLength = PrimaryAnimInstance->Montage_Play(PrimaryComboMontage, 1.f);
 		if (MontageLength <= 0.f)
 		{
 			return false;
 		}
 
-		ActiveComboAnimInstance = AnimInstance;
-		ActiveComboMontage = ComboMontage;
+		ActiveComboAnimInstance = PrimaryAnimInstance;
+		ActiveComboMontage = PrimaryComboMontage;
+		ActiveLinkedComboAnimInstance.Reset();
+		ActiveLinkedComboMontage.Reset();
 		ActiveComboSectionNames = ComboSectionNames;
 
 		StartComboAttack(1);
-		AnimInstance->Montage_JumpToSection(FirstSectionName, ComboMontage);
+
+		PrimaryAnimInstance->Montage_JumpToSection(FirstSectionName, PrimaryComboMontage);
+
+		if (LinkedAnimInstance && LinkedComboMontage)
+		{
+			const float LinkedMontageLength = LinkedAnimInstance->Montage_Play(LinkedComboMontage, 1.f);
+			if (LinkedMontageLength > 0.f)
+			{
+				ActiveLinkedComboAnimInstance = LinkedAnimInstance;
+				ActiveLinkedComboMontage = LinkedComboMontage;
+				LinkedAnimInstance->Montage_JumpToSection(FirstSectionName, LinkedComboMontage);
+			}
+		}
+
 		return true;
 	}
 
@@ -1119,6 +1159,18 @@ bool ULMSWeaponComponent::QueueBufferedComboSection()
 	}
 
 	ActiveAnimInstance->Montage_SetNextSection(CurrentSectionName, NextSectionName, ActiveMontage);
+
+	if (UAnimInstance* LinkedAnimInstance = ActiveLinkedComboAnimInstance.Get())
+	{
+		if (UAnimMontage* LinkedMontage = ActiveLinkedComboMontage.Get())
+		{
+			if (LinkedAnimInstance->Montage_IsPlaying(LinkedMontage))
+			{
+				LinkedAnimInstance->Montage_SetNextSection(CurrentSectionName, NextSectionName, LinkedMontage);
+			}
+		}
+	}
+
 	bComboTransitionQueued = true;
 	return true;
 }
@@ -1130,6 +1182,13 @@ void ULMSWeaponComponent::StopActiveComboMontage(float BlendOutTime)
 	if (ActiveAnimInstance && ActiveMontage && ActiveAnimInstance->Montage_IsPlaying(ActiveMontage))
 	{
 		ActiveAnimInstance->Montage_Stop(BlendOutTime, ActiveMontage);
+	}
+
+	UAnimInstance* LinkedAnimInstance = ActiveLinkedComboAnimInstance.Get();
+	UAnimMontage* LinkedMontage = ActiveLinkedComboMontage.Get();
+	if (LinkedAnimInstance && LinkedMontage && LinkedAnimInstance->Montage_IsPlaying(LinkedMontage))
+	{
+		LinkedAnimInstance->Montage_Stop(BlendOutTime, LinkedMontage);
 	}
 }
 
@@ -1213,6 +1272,17 @@ bool ULMSWeaponComponent::QueueComboSection(UAnimInstance* AnimInstance, UAnimMo
 	}
 
 	AnimInstance->Montage_SetNextSection(CurrentSection, NextSection, ComboMontage);
+	if (UAnimInstance* LinkedAnimInstance = ActiveLinkedComboAnimInstance.Get())
+	{
+		if (UAnimMontage* LinkedMontage = ActiveLinkedComboMontage.Get())
+		{
+			if (LinkedAnimInstance->Montage_IsPlaying(LinkedMontage))
+			{
+				LinkedAnimInstance->Montage_SetNextSection(CurrentSection, NextSection, LinkedMontage);
+			}
+		}
+	}
+
 	bComboInputBuffered = true;
 	bComboTransitionQueued = true;
 	CurrentComboIndex = FMath::Max(NextComboIndex, CurrentComboIndex + 1);
@@ -1235,6 +1305,8 @@ void ULMSWeaponComponent::ResetCombo()
 	CurrentComboIndex = 0;
 	ActiveComboAnimInstance.Reset();
 	ActiveComboMontage.Reset();
+	ActiveLinkedComboAnimInstance.Reset();
+	ActiveLinkedComboMontage.Reset();
 	ActiveComboSectionNames.Reset();
 }
 

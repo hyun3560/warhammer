@@ -124,6 +124,14 @@ public:
 	bool HandleMeleeComboInput(UAnimInstance* AnimInstance, UAnimMontage* ComboMontage, const TArray<FName>& ComboSectionNames);
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Combo")
+	bool HandleMeleeComboInputLinked(
+		UAnimInstance* PrimaryAnimInstance,
+		UAnimMontage* PrimaryComboMontage,
+		UAnimInstance* LinkedAnimInstance,
+		UAnimMontage* LinkedComboMontage,
+		const TArray<FName>& ComboSectionNames);
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Combo")
 	void NotifyComboSectionBegin(int32 ComboIndex);
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Combo")
@@ -193,6 +201,12 @@ protected:
 	bool GetWeaponTraceSocketLocations(FVector& OutStart, FVector& OutEnd) const;
 	void TraceWeaponSegment(const FVector& PreviousPoint, const FVector& CurrentPoint, FCollisionQueryParams& QueryParams);
 	void HandleWeaponTraceHit(const FHitResult& Hit);
+	bool HandleMeleeComboInputInternal(
+		UAnimInstance* PrimaryAnimInstance,
+		UAnimMontage* PrimaryComboMontage,
+		UAnimInstance* LinkedAnimInstance,
+		UAnimMontage* LinkedComboMontage,
+		const TArray<FName>& ComboSectionNames);
 	bool QueueBufferedComboSection();
 	void StopActiveComboMontage(float BlendOutTime = 0.15f);
 
@@ -322,5 +336,7 @@ protected:
 
 	TWeakObjectPtr<UAnimInstance> ActiveComboAnimInstance;
 	TWeakObjectPtr<UAnimMontage> ActiveComboMontage;
+	TWeakObjectPtr<UAnimInstance> ActiveLinkedComboAnimInstance;
+	TWeakObjectPtr<UAnimMontage> ActiveLinkedComboMontage;
 	TArray<FName> ActiveComboSectionNames;
 };
