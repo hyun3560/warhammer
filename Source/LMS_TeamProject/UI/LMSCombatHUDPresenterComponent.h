@@ -62,7 +62,8 @@ public:
 		float CurrentHealth,
 		float MaxHealth,
 		float CurrentShield,
-		float MaxShield
+		float MaxShield,
+		bool bIsGroggy
 	) const;
 
 	// 지정한 팀원 슬롯을 숨깁니다.
@@ -166,7 +167,8 @@ private:
 		float CurrentHealth,
 		float MaxHealth,
 		float CurrentShield,
-		float MaxShield
+		float MaxShield,
+		bool bIsGroggy
 	) const;
 
 	// 팀원 슬롯의 표시 여부를 Combat HUD로 전달합니다.

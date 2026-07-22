@@ -12,6 +12,7 @@ UInteractionDetectorComponent::UInteractionDetectorComponent()
     SetCollisionObjectType(ECC_WorldDynamic);
     SetCollisionResponseToAllChannels(ECR_Ignore);
     SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);   // 임시. 나중에 Interactable 채널로.
+    SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Overlap);   // Hero
     SetGenerateOverlapEvents(true);
 }
 
