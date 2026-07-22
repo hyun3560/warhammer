@@ -2,13 +2,10 @@
 
 #include "HitBox_Projectile.h"
 #include "Components/SphereComponent.h"
-#include "Ememy/BaseEnemyCharacter.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "AbilitySystemComponent.h"
-#include "LMSAttributeSet.h"
-#include "Ememy/EnemyTableRow.h"
-#include "LMS_TeamProjectCharacter.h"
 #include "Kismet/GameplayStatics.h"
+#include "DrawDebugHelpers.h"
 #include "LMSDamageLibrary.h"
 
 AHitBox_Projectile::AHitBox_Projectile()
@@ -18,10 +15,21 @@ AHitBox_Projectile::AHitBox_Projectile()
 	InitialSpeed = 3000.f;
 	MaxSpeed = 3000.f;
 	ArcParam = 0.5f;
+	Damage = 0.f;
+	bDrawDebugCollision = false;
 
 	CollisionComponent = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComp"));
 	CollisionComponent->InitSphereRadius(15.f);
-	CollisionComponent->SetCollisionProfileName(TEXT("Projectile"));
+	// "Projectile" 프로필이 프로젝트에 정의돼 있지 않아 충돌 응답을 코드에서 직접 설정한다.
+	CollisionComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	CollisionComponent->SetCollisionObjectType(ECC_WorldDynamic);
+	CollisionComponent->SetCollisionResponseToAllChannels(ECR_Block);
+	CollisionComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	// Hit 이벤트가 발생하도록 설정 (이게 없으면 OnComponentHit이 호출되지 않음)
+	CollisionComponent->SetNotifyRigidBodyCollision(true);
+	CollisionComponent->SetGenerateOverlapEvents(false);
+	// 빠른 총알이 얇은 대상을 관통(터널링)하지 않도록 연속 충돌 검사 사용
+	CollisionComponent->SetAllUseCCD(true);
 	CollisionComponent->OnComponentHit.AddDynamic(this, &AHitBox_Projectile::OnHit);
 	RootComponent = CollisionComponent;
 
@@ -42,6 +50,20 @@ void AHitBox_Projectile::BeginPlay()
 void AHitBox_Projectile::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	if (bDrawDebugCollision && CollisionComponent)
+	{
+		DrawDebugSphere(
+			GetWorld(),
+			CollisionComponent->GetComponentLocation(),
+			CollisionComponent->GetScaledSphereRadius(),
+			12,
+			FColor::Green,
+			false,
+			-1.f,
+			0,
+			1.5f);
+	}
 }
 
 bool AHitBox_Projectile::LaunchToTarget(FVector TargetLocation)
@@ -65,9 +87,18 @@ bool AHitBox_Projectile::LaunchToTarget(FVector TargetLocation)
 	return bSuccess;
 }
 
-void AHitBox_Projectile::InitializeProjectile(float InRadius, float InInitSpeed, float InMaxSpeed)
+void AHitBox_Projectile::LaunchStraight(FVector Direction, float Speed)
+{
+	const FVector NormalizedDirection = Direction.GetSafeNormal();
+
+	ProjectileMovement->MaxSpeed = Speed;
+	ProjectileMovement->Velocity = NormalizedDirection * Speed;
+}
+
+void AHitBox_Projectile::InitializeProjectile(float InRadius, float InDamage, float InInitSpeed, float InMaxSpeed)
 {
 	CollisionComponent->SetSphereRadius(InRadius);
+	Damage = InDamage;
 	InitialSpeed = InInitSpeed;
 	MaxSpeed = InMaxSpeed;
 
@@ -83,21 +114,12 @@ void AHitBox_Projectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
 		return;
 	}
 
-	ABaseEnemyCharacter* Enemy = Cast<ABaseEnemyCharacter>(Owner);
-	if (!Enemy)
+	AActor* ProjectileOwner = GetOwner();
+	if (!ProjectileOwner || !OtherActor || OtherActor == ProjectileOwner)
 	{
 		return;
 	}
 
-	ALMS_TeamProjectCharacter* Target = Cast<ALMS_TeamProjectCharacter>(OtherActor);
-	if (!Target)
-	{
-		return;
-	}
-
-	const FEnemyTableRow* Data = Enemy->GetEnemyData();
-	const float Damage = Data ? Data->Damage : 0.f;
-
-	ULMSDamageLibrary::ApplyDamageEffect(Enemy, Target, Damage, DamageEffect);
+	ULMSDamageLibrary::ApplyDamageEffect(ProjectileOwner, OtherActor, Damage, DamageEffect);
 	Destroy();
 }

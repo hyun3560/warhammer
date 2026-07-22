@@ -108,6 +108,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Ranged")
 	void FireRangedShot(float DamageMultiplier, float RangeMultiplier, bool bDrawDebugTrace);
 
+	// CurrentWeaponData.ProjectileClass를 Spawn하여 조준 방향으로 직선 발사 (Projectile 기반 라이플 발사용)
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Ranged")
+	void FireRifleProjectile(float DamageMultiplier);
+
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Trace")
 	void BeginWeaponTrace(FName StartSocketName, FName EndSocketName, float TraceRadius, float DamageMultiplier, bool bDrawDebugTrace);
 

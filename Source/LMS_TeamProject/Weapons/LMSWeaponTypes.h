@@ -5,6 +5,7 @@
 #include "LMSWeaponTypes.generated.h"
 
 class ALMSWeaponBase;
+class AHitBox_Projectile;
 class UGameplayAbility;
 class UGameplayEffect;
 class UTexture2D;
@@ -59,6 +60,16 @@ struct FWeaponData : public FTableRowBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Ranged")
 	float Range = 1000.f;
+
+	// 설정 시 히트스캔 대신 이 클래스로 Projectile을 Spawn하여 발사 (비워두면 기존 라인트레이스 사용)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Ranged")
+	TSubclassOf<AHitBox_Projectile> ProjectileClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Ranged")
+	float ProjectileSpeed = 3000.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Ranged")
+	float ProjectileRadius = 8.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|Ranged")
 	int32 MagazineSize = 0;

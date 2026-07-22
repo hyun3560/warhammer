@@ -10,6 +10,7 @@
 #include "Engine/Texture2D.h"
 #include "GameFramework/Character.h"
 #include "Kismet/GameplayStatics.h"
+#include "../HitBox_Projectile.h"
 #include "LMSWeaponBase.h"
 #include "LMSWeaponPrimaryAbility.h"
 #include "LMSWeaponSecondaryAbility.h"
@@ -1002,6 +1003,62 @@ void ULMSWeaponComponent::FireRangedShot(float DamageMultiplier, float RangeMult
 			DrawDebugSphere(World, Hit.ImpactPoint, 12.f, 8, FColor::Yellow, false, 1.5f);
 		}
 	}
+}
+
+void ULMSWeaponComponent::FireRifleProjectile(float DamageMultiplier)
+{
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	UWorld* World = GetWorld();
+	if (!OwnerCharacter || !World || !OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+
+	if (!CurrentWeaponData.ProjectileClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FireRifleProjectile failed: ProjectileClass not set for %s"), *CurrentWeaponData.WeaponID.ToString());
+		return;
+	}
+
+	const FTransform AttackOrigin = CurrentWeapon ? CurrentWeapon->GetAttackOriginTransform() : FTransform::Identity;
+	const FVector SpawnLocation = CurrentWeapon ? AttackOrigin.GetLocation() : OwnerCharacter->GetPawnViewLocation();
+	const FRotator AimRotation = OwnerCharacter->GetControlRotation();
+	const FVector Direction = AimRotation.Vector();
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = OwnerCharacter;
+	SpawnParams.Instigator = OwnerCharacter;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	AHitBox_Projectile* Projectile = World->SpawnActor<AHitBox_Projectile>(
+		CurrentWeaponData.ProjectileClass,
+		SpawnLocation,
+		AimRotation,
+		SpawnParams);
+
+	if (!Projectile)
+	{
+		return;
+	}
+
+	// 쏜 캐릭터/무기 자신과의 즉시 충돌을 방지 (총구가 몸 안에서 스폰될 때 자기 몸에 맞는 문제)
+	Projectile->SetOwner(OwnerCharacter);
+	if (UPrimitiveComponent* ProjectileRoot = Cast<UPrimitiveComponent>(Projectile->GetRootComponent()))
+	{
+		ProjectileRoot->IgnoreActorWhenMoving(OwnerCharacter, true);
+		if (CurrentWeapon)
+		{
+			ProjectileRoot->IgnoreActorWhenMoving(CurrentWeapon, true);
+		}
+		if (FirstPersonWeapon)
+		{
+			ProjectileRoot->IgnoreActorWhenMoving(FirstPersonWeapon, true);
+		}
+	}
+
+	const float ShotDamage = CurrentWeaponData.Damage * DamageMultiplier;
+	Projectile->InitializeProjectile(CurrentWeaponData.ProjectileRadius, ShotDamage, CurrentWeaponData.ProjectileSpeed, CurrentWeaponData.ProjectileSpeed);
+	Projectile->LaunchStraight(Direction, CurrentWeaponData.ProjectileSpeed);
 }
 
 void ULMSWeaponComponent::StartComboAttack(int32 StartingComboIndex)
