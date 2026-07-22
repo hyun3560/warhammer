@@ -6,6 +6,7 @@
 #include "GameFramework/Character.h"
 #include "Logging/LogMacros.h"
 #include "AbilitySystemInterface.h"
+#include "LMSInteractableInterface.h"
 #include "LMSGameplayAbility.h"
 #include "UI/IndicatorTargetInterface.h"
 #include "LMS_TeamProjectCharacter.generated.h"
@@ -16,14 +17,15 @@ class UInputMappingContext;
 class UInputAction;
 class UAbilitySystemComponent;
 class ULMSAttributeSet;
+class UInteractionDetectorComponent;
 class UGameplayAbility;
 class ULMSWeaponComponent;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
-UCLASS(config=Game)
-class ALMS_TeamProjectCharacter : public ACharacter, public IAbilitySystemInterface, public IIndicatorTargetInterface
+UCLASS(config = Game)
+class ALMS_TeamProjectCharacter : public ACharacter, public IAbilitySystemInterface, public ILMSInteractableInterface, public IIndicatorTargetInterface
 {
 	GENERATED_BODY()
 
@@ -57,11 +59,14 @@ class ALMS_TeamProjectCharacter : public ACharacter, public IAbilitySystemInterf
 	UPROPERTY(EditDefaultsOnly, Category = Effects, meta = (AllowPrivateAccess = "true"))
 	TSubclassOf<UGameplayEffect> DeadEffect;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Spectator")
-	TSubclassOf<class ALMSSpectatorPawn> SpectatorPawnClass;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Interaction, meta = (AllowPrivateAccess = "true"))
+	UInteractionDetectorComponent* InteractionDetector;
 
 	UPROPERTY()
-	TObjectPtr<AActor> CurrentReviveTarget = nullptr;
+	ELMSAbilityInputID CachedInteractInputID = ELMSAbilityInputID::None;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Spectator")
+	TSubclassOf<class ALMSSpectatorPawn> SpectatorPawnClass;
 
 	/** Camera boom positioning the camera behind the character */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
@@ -74,7 +79,7 @@ class ALMS_TeamProjectCharacter : public ACharacter, public IAbilitySystemInterf
 	/** Handles equipped weapon data, spawned weapon actor, and weapon actions */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Weapon, meta = (AllowPrivateAccess = "true"))
 	ULMSWeaponComponent* WeaponComponent;
-	
+
 	/** MappingContext */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputMappingContext* DefaultMappingContext;
@@ -129,9 +134,6 @@ class ALMS_TeamProjectCharacter : public ACharacter, public IAbilitySystemInterf
 	UPROPERTY(EditDefaultsOnly, Category = "Coherency")
 	float CoherencyDistance = 500.f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Revive")
-	float ReviveTraceDistance = 250.f;
-
 public:
 	ALMS_TeamProjectCharacter();
 
@@ -165,6 +167,10 @@ protected:
 	void HandleHealthZero(const FGameplayEffectModCallbackData& Data);
 	void HandleIncapHealthZero(const FGameplayEffectModCallbackData& Data);
 
+	/** InteractionDetector가 대상 변경을 알릴 때 호출 — HUD 프롬프트 표시/숨김 */
+	UFUNCTION()
+	void OnInteractTargetChanged(AActor* NewTarget, FGameplayTag InteractionType);
+
 	AActor* FindFirstLivingAlly() const;
 
 	/** 마우스 휠 클릭 입력 처리: 카메라 중앙(크로스헤어) 기준 라인트레이스로 핑 위치 계산 */
@@ -183,9 +189,8 @@ protected:
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
 
-	private:
-		FTimerHandle ReviveTraceTimerHandle;
-		FTimerHandle CoherencyTimerHandle;
+private:
+	FTimerHandle CoherencyTimerHandle;
 
 public:
 	UFUNCTION(BlueprintCallable)
@@ -200,10 +205,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	ULMSWeaponComponent* GetWeaponComponent() const { return WeaponComponent; }
 
-	TObjectPtr<AActor> GetCurrentReviveTarget() const { return CurrentReviveTarget; }
+	//~ Begin ILMSInteractableInterface
+	virtual bool CanInteract_Implementation(AActor* Interactor) const override;
+	virtual FGameplayTag GetInteractionType_Implementation() const override;
+	virtual int32 GetInteractInputID_Implementation() const override;
+	//~ End ILMSInteractableInterface
+
+	UInteractionDetectorComponent* GetInteractionDetector() const { return InteractionDetector; }
 
 	void CheckCoherency();
-	void TraceForReviveTarget();
-	
-};
 
+};
