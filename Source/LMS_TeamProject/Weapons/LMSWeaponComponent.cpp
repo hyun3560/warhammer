@@ -18,6 +18,7 @@
 #include "Animation/AnimMontage.h"
 #include "Net/UnrealNetwork.h"
 #include "TimerManager.h"
+#include "../LMSDamageLibrary.h"
 #include "../LMSGameplayAbility.h"
 
 ULMSWeaponComponent::ULMSWeaponComponent()
@@ -941,12 +942,7 @@ void ULMSWeaponComponent::HandleWeaponTraceHit(const FHitResult& Hit)
 	}
 
 	const float TraceDamage = CurrentWeaponData.Damage * ActiveWeaponTraceDamageMultiplier;
-	UGameplayStatics::ApplyDamage(
-		HitActor,
-		TraceDamage,
-		OwnerCharacter->GetController(),
-		CurrentWeapon ? Cast<AActor>(CurrentWeapon) : Cast<AActor>(OwnerCharacter),
-		UDamageType::StaticClass());
+	ULMSDamageLibrary::ApplyDamageEffect(OwnerCharacter, HitActor, TraceDamage, CurrentWeaponData.DamageEffect);
 }
 
 void ULMSWeaponComponent::FireRangedShot(float DamageMultiplier, float RangeMultiplier, bool bDrawDebugTrace)
