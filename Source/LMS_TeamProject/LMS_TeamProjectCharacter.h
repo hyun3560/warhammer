@@ -57,6 +57,9 @@ class ALMS_TeamProjectCharacter : public ACharacter, public IAbilitySystemInterf
 	UPROPERTY(EditDefaultsOnly, Category = Effects, meta = (AllowPrivateAccess = "true"))
 	TSubclassOf<UGameplayEffect> DeadEffect;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Spectator")
+	TSubclassOf<class ALMSSpectatorPawn> SpectatorPawnClass;
+
 	UPROPERTY()
 	TObjectPtr<AActor> CurrentReviveTarget = nullptr;
 
@@ -161,6 +164,8 @@ protected:
 	void HandleDamaged(const FGameplayEffectModCallbackData& Data);
 	void HandleHealthZero(const FGameplayEffectModCallbackData& Data);
 	void HandleIncapHealthZero(const FGameplayEffectModCallbackData& Data);
+
+	AActor* FindFirstLivingAlly() const;
 
 	/** 마우스 휠 클릭 입력 처리: 카메라 중앙(크로스헤어) 기준 라인트레이스로 핑 위치 계산 */
 	void RequestPing(const FInputActionValue& Value);

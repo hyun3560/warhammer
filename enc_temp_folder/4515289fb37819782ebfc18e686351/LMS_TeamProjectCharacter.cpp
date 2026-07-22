@@ -360,33 +360,33 @@ void ALMS_TeamProjectCharacter::HandleIncapHealthZero(const FGameplayEffectModCa
 	}
 
 	
-	if (APlayerController* PC = Cast<APlayerController>(GetController()))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[Spec] PC 유효, 스폰 시도"));
+		if (APlayerController* PC = Cast<APlayerController>(GetController()))
+{
+    UE_LOG(LogTemp, Warning, TEXT("[Spec] PC 유효, 스폰 시도"));
 
-		AActor* AllyToWatch = FindFirstLivingAlly();
+    AActor* AllyToWatch = FindFirstLivingAlly();
 
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.Owner = this;
-		SpawnParams.SpawnCollisionHandlingOverride =
-			ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    FActorSpawnParameters SpawnParams;
+    SpawnParams.Owner = this;
+    SpawnParams.SpawnCollisionHandlingOverride =
+        ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-		ALMSSpectatorPawn* SpecPawn = GetWorld()->SpawnActor<ALMSSpectatorPawn>(
-			SpectatorPawnClass,
-			GetActorLocation(), GetActorRotation(), SpawnParams);
+    ALMSSpectatorPawn* SpecPawn = GetWorld()->SpawnActor<ALMSSpectatorPawn>(
+        SpectatorPawnClass,
+        GetActorLocation(), GetActorRotation(), SpawnParams);
 
-		UE_LOG(LogTemp, Warning, TEXT("[Spec] SpawnActor 결과: %s"),
-			SpecPawn ? TEXT("성공") : TEXT("실패(nullptr)"));
+    UE_LOG(LogTemp, Warning, TEXT("[Spec] SpawnActor 결과: %s"),
+        SpecPawn ? TEXT("성공") : TEXT("실패(nullptr)"));
 
-		if (SpecPawn)
-		{
-			PC->Possess(SpecPawn);
-			UE_LOG(LogTemp, Warning, TEXT("[Spec] Possess 호출됨, 현재 폰: %s"),
-				*GetNameSafe(PC->GetPawn()));
+    if (SpecPawn)
+    {
+        PC->Possess(SpecPawn);
+        UE_LOG(LogTemp, Warning, TEXT("[Spec] Possess 호출됨, 현재 폰: %s"),
+            *GetNameSafe(PC->GetPawn()));
 
-			if (AllyToWatch) SpecPawn->SetSpectateTarget(AllyToWatch);
-		}
-	}
+        if (AllyToWatch) SpecPawn->SetSpectateTarget(AllyToWatch);
+    }
+}
 else
 {
     UE_LOG(LogTemp, Warning, TEXT("[Spec] PC 캐스트 실패 - 여기가 문제"));
