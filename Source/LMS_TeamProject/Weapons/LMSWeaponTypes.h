@@ -45,6 +45,9 @@ struct FWeaponData : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
 	float Damage = 10.f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon|GAS")
+	TSubclassOf<UGameplayEffect> DamageEffect;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
 	float AttackRate = 1.f;
 

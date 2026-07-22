@@ -43,6 +43,12 @@ class ALMS_TeamProjectCharacter : public ACharacter, public IAbilitySystemInterf
 	TArray<TSubclassOf<UGameplayEffect>> DefaultEffects;
 
 	UPROPERTY(EditDefaultsOnly, Category = Effects, meta = (AllowPrivateAccess = "true"))
+	TSubclassOf<UGameplayEffect> HealEffect;
+
+	UPROPERTY(EditDefaultsOnly, Category = Effects, meta = (AllowPrivateAccess = "true"))
+	TSubclassOf<UGameplayEffect> HealBlockEffect;
+
+	UPROPERTY(EditDefaultsOnly, Category = Effects, meta = (AllowPrivateAccess = "true"))
 	TSubclassOf<UGameplayEffect> IncapacitatedEffect;
 
 	UPROPERTY(EditDefaultsOnly, Category = Effects, meta = (AllowPrivateAccess = "true"))
@@ -117,16 +123,11 @@ class ALMS_TeamProjectCharacter : public ACharacter, public IAbilitySystemInterf
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))
 	UInputAction* ReloadAction;
 
-
+	UPROPERTY(EditDefaultsOnly, Category = "Coherency")
+	float CoherencyDistance = 500.f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Revive")
 	float ReviveTraceDistance = 250.f;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Block", meta = (ClampMin = "0.0", ClampMax = "1.0"))
-	float BlockDamageMultiplier = 0.2f;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Block", meta = (ClampMin = "-1.0", ClampMax = "1.0"))
-	float BlockFacingDotThreshold = 0.5f;
 
 public:
 	ALMS_TeamProjectCharacter();
@@ -157,6 +158,7 @@ protected:
 	void OnAbilityInputPressed(ELMSAbilityInputID InputID);
 	void OnAbilityInputReleased(ELMSAbilityInputID InputID);
 
+	void HandleDamaged(const FGameplayEffectModCallbackData& Data);
 	void HandleHealthZero(const FGameplayEffectModCallbackData& Data);
 	void HandleIncapHealthZero(const FGameplayEffectModCallbackData& Data);
 
@@ -178,13 +180,11 @@ protected:
 
 	private:
 		FTimerHandle ReviveTraceTimerHandle;
+		FTimerHandle CoherencyTimerHandle;
 
 public:
 	UFUNCTION(BlueprintCallable)
 	void TakeDamage(float Damage);
-
-	UFUNCTION(BlueprintCallable)
-	void TakeDamageFromOrigin(float Damage, FVector DamageOrigin);
 
 public:
 	/** Returns CameraBoom subobject **/
@@ -197,9 +197,8 @@ public:
 
 	TObjectPtr<AActor> GetCurrentReviveTarget() const { return CurrentReviveTarget; }
 
+	void CheckCoherency();
 	void TraceForReviveTarget();
-
-private:
-	bool IsDamageBlockedFromOrigin(const FVector& DamageOrigin) const;
+	
 };
 

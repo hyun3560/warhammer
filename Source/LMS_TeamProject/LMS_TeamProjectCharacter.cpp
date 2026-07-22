@@ -7,7 +7,6 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/Controller.h"
-#include "Kismet/KismetMathLibrary.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputActionValue.h"
@@ -21,6 +20,7 @@
 #include "GameplayTagContainer.h"
 #include "UI/IndicatorManagerComponent.h"
 #include "UI/LMSCombatHUDPresenterComponent.h"
+#include "Kismet/GameplayStatics.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -83,6 +83,13 @@ void ALMS_TeamProjectCharacter::PossessedBy(AController* NewController)
 		InitAbilityActorInfo();
 		GiveDefaultAbilities();
 		ApplyDefaultEffects();
+
+		GetWorldTimerManager().SetTimer(
+			CoherencyTimerHandle,
+			this,
+			&ThisClass::CheckCoherency,
+			0.25f,
+			true);
 }
 
 void ALMS_TeamProjectCharacter::OnRep_PlayerState()
@@ -139,6 +146,8 @@ void ALMS_TeamProjectCharacter::InitAbilityActorInfo()
 	if (HasAuthority() && AttributeSet)
 	{
 		// 중복 방지 — 기존 바인딩 제거 후 재바인딩
+		AttributeSet->OnDamaged.RemoveAll(this);
+		AttributeSet->OnDamaged.AddUObject(this, &ALMS_TeamProjectCharacter::HandleDamaged);
 		AttributeSet->OnHealthZero.RemoveAll(this);
 		AttributeSet->OnHealthZero.AddUObject(this, &ALMS_TeamProjectCharacter::HandleHealthZero);
 		AttributeSet->OnIncapHealthZero.RemoveAll(this);
@@ -262,48 +271,28 @@ void ALMS_TeamProjectCharacter::OnAbilityInputReleased(ELMSAbilityInputID InputI
 
 void ALMS_TeamProjectCharacter::TakeDamage(float Damage)
 {
-	TakeDamageFromOrigin(Damage, GetActorLocation() - GetActorForwardVector());
-}
-
-void ALMS_TeamProjectCharacter::TakeDamageFromOrigin(float Damage, FVector DamageOrigin)
-{
 	if (!HasAuthority() || !AbilitySystemComponent)
 	{
 		return;
 	}
 
-	float FinalDamage = Damage;
-	if (IsDamageBlockedFromOrigin(DamageOrigin))
-	{
-		FinalDamage *= BlockDamageMultiplier;
-	}
-
 	AbilitySystemComponent->ApplyModToAttribute(
 		ULMSAttributeSet::GetHealthAttribute(),
 		EGameplayModOp::Additive,
-		-FinalDamage);
+		-Damage);
 
-	UE_LOG(LogTemplateCharacter, Log, TEXT("%s took %.1f damage (raw %.1f), remaining Health = %.1f"),
-		*GetName(), FinalDamage, Damage, AttributeSet ? AttributeSet->GetHealth() : 0.f);
+	UE_LOG(LogTemplateCharacter, Log, TEXT("%s took %.1f damage, remaining Health = %.1f"),
+		*GetName(), Damage, AttributeSet ? AttributeSet->GetHealth() : 0.f);
 }
 
-bool ALMS_TeamProjectCharacter::IsDamageBlockedFromOrigin(const FVector& DamageOrigin) const
+void ALMS_TeamProjectCharacter::HandleDamaged(const FGameplayEffectModCallbackData& Data)
 {
-	if (!WeaponComponent || !WeaponComponent->IsBlocking())
-	{
-		return false;
-	}
-
-	const FVector ToDamageOrigin = (DamageOrigin - GetActorLocation()).GetSafeNormal2D();
-	if (ToDamageOrigin.IsNearlyZero())
-	{
-		return false;
-	}
-
-	const FRotator FacingRotation = Controller ? Controller->GetControlRotation() : GetActorRotation();
-	const FVector Forward = UKismetMathLibrary::GetForwardVector(FacingRotation).GetSafeNormal2D();
-	const float FacingDot = FVector::DotProduct(Forward, ToDamageOrigin);
-	return FacingDot >= BlockFacingDotThreshold;
+	if (!HasAuthority() || !HealBlockEffect) return;
+	// GE_HealBlock 적용 → state.Heal.Block 태그
+	FGameplayEffectContextHandle Context = AbilitySystemComponent->MakeEffectContext();
+	FGameplayEffectSpecHandle Spec = AbilitySystemComponent->MakeOutgoingSpec(HealBlockEffect, 1.f, Context);
+	if (Spec.IsValid())
+		AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*Spec.Data.Get());
 }
 
 void ALMS_TeamProjectCharacter::HandleHealthZero(const FGameplayEffectModCallbackData& Data)
@@ -367,6 +356,77 @@ void ALMS_TeamProjectCharacter::HandleIncapHealthZero(const FGameplayEffectModCa
 		AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*DeadSpec.Data.Get());
 
 	}
+
+}
+
+void ALMS_TeamProjectCharacter::CheckCoherency()
+{
+
+	if (!HasAuthority() || !AbilitySystemComponent || !HealEffect)
+	{
+		return;
+	}
+
+	static const FGameplayTag IncapTag =
+		FGameplayTag::RequestGameplayTag(FName("state.Incapacitated"));
+
+	static const FGameplayTag ShieldTag =
+		FGameplayTag::RequestGameplayTag(FName("Data.Heal"));
+
+	int32 NearbyCount = 0;
+
+	const FVector MyLocation = GetActorLocation();
+	const float CoherencyDistanceSq = FMath::Square(CoherencyDistance);
+
+	TArray<AActor*> Players;
+	UGameplayStatics::GetAllActorsOfClass(
+		GetWorld(),
+		ALMS_TeamProjectCharacter::StaticClass(),
+		Players);
+
+	for (AActor* Actor : Players)
+	{
+		ALMS_TeamProjectCharacter* Other = Cast<ALMS_TeamProjectCharacter>(Actor);
+
+		if (!Other || Other == this)
+			continue;
+
+		if (!Other->AbilitySystemComponent)
+			continue;
+
+		if (Other->AbilitySystemComponent->HasMatchingGameplayTag(IncapTag))
+			continue;
+
+		if (FVector::DistSquared(MyLocation, Other->GetActorLocation()) > CoherencyDistanceSq)
+			continue;
+
+		++NearbyCount;
+	}
+
+	if (NearbyCount > 0)
+	{
+		FGameplayEffectContextHandle Context = AbilitySystemComponent->MakeEffectContext();
+		Context.AddSourceObject(this);
+
+		FGameplayEffectSpecHandle HealSpec =
+			AbilitySystemComponent->MakeOutgoingSpec(HealEffect, 1.f, Context);
+
+		
+
+
+		HealSpec.Data->SetSetByCallerMagnitude(
+			ShieldTag,
+			NearbyCount * 3
+		);
+
+		if (HealSpec.IsValid())
+		{
+			AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*HealSpec.Data.Get());
+
+		}
+	}
+
+
 
 }
 
@@ -440,6 +500,8 @@ void ALMS_TeamProjectCharacter::TraceForReviveTarget()
 	}
 }
 
+
+
 void ALMS_TeamProjectCharacter::BeginPlay()
 {
 	// Call the base class
@@ -467,6 +529,8 @@ void ALMS_TeamProjectCharacter::BeginPlay()
 		ReviveTraceTimerHandle, this,
 		&ALMS_TeamProjectCharacter::TraceForReviveTarget,
 		0.15f, true);
+
+	
 }
 
 void ALMS_TeamProjectCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)

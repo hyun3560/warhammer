@@ -1,10 +1,12 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "GameplayEffect.h"
 #include "Hit_Box.generated.h"
+
 
 UCLASS()
 class LMS_TEAMPROJECT_API AHit_Box : public AActor
@@ -14,6 +16,9 @@ class LMS_TEAMPROJECT_API AHit_Box : public AActor
 public:	
 	// Sets default values for this actor's properties
 	AHit_Box();
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS")
+	TSubclassOf<UGameplayEffect> DamageEffect;
 
 protected:
 	// Called when the game starts or when spawned

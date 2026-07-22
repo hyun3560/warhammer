@@ -108,7 +108,10 @@ void ULMSAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 		SetStamina(FMath::Clamp(GetStamina(), 0.f, GetMaxStamina()));
 	}
 
-
+	else if (Data.EvaluatedData.Attribute == GetShieldAttribute())
+	{
+		SetShield(FMath::Clamp(GetShield(), 0.f, GetMaxShield()));
+	}
 
 	else if (Data.EvaluatedData.Attribute == GetDamageAttribute()) //쉴드 로직
 	{
@@ -135,6 +138,34 @@ void ULMSAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 				{
 					OnHealthZero.Broadcast(Data);
 				}
+			}
+
+			OnDamaged.Broadcast(Data);
+		}
+	}
+
+	else if (Data.EvaluatedData.Attribute == GetHealAttribute())
+	{
+		const float LocalHeal = GetHeal();
+		SetHeal(0.f);                    // 메타값 즉시 소비
+
+		if (LocalHeal > 0.f)
+		{
+			float Remaining = LocalHeal;
+
+			// 1) HP 먼저 채움 (Max까지)
+			const float HealthSpace = GetMaxHealth() - GetHealth();
+			if (HealthSpace > 0.f)
+			{
+				const float Applied = FMath::Min(HealthSpace, Remaining);
+				SetHealth(GetHealth() + Applied);
+				Remaining -= Applied;
+			}
+
+			// 2) 넘친 만큼 쉴드로 (Max까지)
+			if (Remaining > 0.f)
+			{
+				SetShield(FMath::Clamp(GetShield() + Remaining, 0.f, GetMaxShield()));
 			}
 		}
 	}
