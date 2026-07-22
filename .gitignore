@@ -77,9 +77,14 @@ DerivedDataCache/*
 # Local-only large asset packs
 Content/Scifi_desert_city/
 Content/Sci_FI_Valley_Village/
-Content/ParagonIggyScorch/
-Content/ParagonGrux/
+Content/Paragon*/
+!Content/ParagonMurdock/
+!Content/ParagonMurdock/**
 Content/Resources/
 Content/Resource/
-Content/ParagonKwang/
-Content/ParagonSevarog/
+!Content/Resource/
+Content/Resource/*
+!Content/Resource/Scifi_desert_city/
+Content/Resource/Scifi_desert_city/*
+!Content/Resource/Scifi_desert_city/Level/
+Content/Resource/Scifi_desert_city/Level/*
