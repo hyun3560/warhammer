@@ -18,4 +18,8 @@ protected:
 		const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayAbilityActivationInfo ActivationInfo,
 		const FGameplayEventData* TriggerEventData) override;
+
+	// 재장전 로직(Reload) 실행 직후 호출된다. 블루프린트에서 재장전 몽타주 재생 등을 구현한다.
+	UFUNCTION(BlueprintImplementableEvent, Category = "Weapon|Reload")
+	void PlayReloadMontage();
 };
