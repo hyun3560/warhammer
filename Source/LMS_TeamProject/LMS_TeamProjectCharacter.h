@@ -68,6 +68,22 @@ class ALMS_TeamProjectCharacter : public ACharacter, public IAbilitySystemInterf
 	UPROPERTY(EditDefaultsOnly, Category = "Spectator")
 	TSubclassOf<class ALMSSpectatorPawn> SpectatorPawnClass;
 
+	/** 죽을 때 소유했던 PC — 언포제스 후 PlayerState가 null이 되므로 별도 보관 (서버 전용) */
+	UPROPERTY()
+	TObjectPtr<APlayerController> CachedOwnerPC;
+
+	/** 죽음 상태 — 복제되어 각 클라에서 래그돌 시작 */
+	UPROPERTY(ReplicatedUsing = OnRep_IsDead, BlueprintReadOnly, Category = "Death", meta = (AllowPrivateAccess = "true"))
+	bool bIsDead = false;
+
+	/** 래그돌 유지 시간 (이후 시체 숨김) */
+	UPROPERTY(EditDefaultsOnly, Category = "Death", meta = (AllowPrivateAccess = "true"))
+	float CorpseRagdollDuration = 3.f;
+
+	/** 구조물 부활 시 적용할 GE (죽음/다운 GE 제거 + 체력 복구) */
+	UPROPERTY(EditDefaultsOnly, Category = Effects, meta = (AllowPrivateAccess = "true"))
+	TSubclassOf<UGameplayEffect> RescuedEffect;
+
 	/** Camera boom positioning the camera behind the character */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Camera, meta = (AllowPrivateAccess = "true"))
 	USpringArmComponent* CameraBoom;
@@ -170,6 +186,18 @@ protected:
 	void HandleHealthZero(const FGameplayEffectModCallbackData& Data);
 	void HandleIncapHealthZero(const FGameplayEffectModCallbackData& Data);
 
+	UFUNCTION()
+	void OnRep_IsDead();
+
+	/** 래그돌 시작 + 정리 타이머 예약 (서버/클라 각자 실행) */
+	void StartRagdoll();
+
+	/** 시체 상태 해제 — 물리 끄고 메시 복구 + 표시 (서버/클라 각자) */
+	void RestoreFromCorpse();
+
+	/** 타이머 만료 — 숨김 → 물리 해제 → 메시 재부착 순서 */
+	void FinishCorpseCleanup();
+
 	/** InteractionDetector가 대상 변경을 알릴 때 호출 — HUD 프롬프트 표시/숨김 */
 	UFUNCTION()
 	void OnInteractTargetChanged(AActor* NewTarget, FGameplayTag InteractionType);
@@ -191,9 +219,18 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 private:
 	FTimerHandle CoherencyTimerHandle;
+
+	FTimerHandle CorpseTimerHandle;
+
+	/** 래그돌 전 메시의 원래 상대 트랜스폼 (부활 시 복구용) */
+	FTransform MeshRelativeTransform;
+
+	/** 재possess 시 DefaultAbilities/Effects 중복 적용 방지 */
+	bool bDefaultsInitialized = false;
 
 public:
 	UFUNCTION(BlueprintCallable)
@@ -215,6 +252,10 @@ public:
 	//~ End ILMSInteractableInterface
 
 	UInteractionDetectorComponent* GetInteractionDetector() const { return InteractionDetector; }
+
+	void RescueFromDeath(const FVector& ReviveLocation, const FRotator& ReviveRotation);
+
+	bool IsDead() const { return bIsDead; }
 
 	void CheckCoherency();
 

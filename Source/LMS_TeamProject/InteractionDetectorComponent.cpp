@@ -7,11 +7,18 @@
 UInteractionDetectorComponent::UInteractionDetectorComponent()
 {
     PrimaryComponentTick.bCanEverTick = false;
-
     SetCollisionEnabled(ECollisionEnabled::QueryOnly);
     SetCollisionObjectType(ECC_WorldDynamic);
     SetCollisionResponseToAllChannels(ECR_Ignore);
-    SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);   // 임시. 나중에 Interactable 채널로.
+    SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);   // 다운된 팀원 감지
+
+    // TODO(Interactable): 임시 — 구조물(RescueStation) 감지용.
+    // 최신 브랜치 머지 후 Interactable 오브젝트 채널(ECC_GameTraceChannel3) 생성하고
+    // 아래 줄을 SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Overlap)으로 교체.
+    // 현재는 디텍터 자신이 WorldDynamic이라 타 캐릭터의 디텍터끼리도 오버랩되어
+    // 캐릭터 감지 반경이 상대 디텍터 반경만큼 넓어지는 부작용이 있음.
+    SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
+
     SetGenerateOverlapEvents(true);
 }
 

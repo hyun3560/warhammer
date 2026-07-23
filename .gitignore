@@ -1,4 +1,4 @@
-# Visual Studio 2015 user specific files
+﻿# Visual Studio 2015 user specific files
 .vs/
 
 # Compiled Object files
@@ -84,3 +84,4 @@ Content/Resources/
 Content/Resource/
 Content/ParagonKwang/
 Content/ParagonSevarog/
+_LocalOnly/

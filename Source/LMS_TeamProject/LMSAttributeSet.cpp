@@ -24,6 +24,7 @@ void ULMSAttributeSet::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& Out
 	DOREPLIFETIME_CONDITION_NOTIFY(ULMSAttributeSet, MaxWound, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(ULMSAttributeSet, IncapHealth, COND_None, REPNOTIFY_Always);
 	DOREPLIFETIME_CONDITION_NOTIFY(ULMSAttributeSet, MaxIncapHealth, COND_None, REPNOTIFY_Always);
+
 }
 
 void ULMSAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue)
@@ -113,35 +114,52 @@ void ULMSAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 		SetShield(FMath::Clamp(GetShield(), 0.f, GetMaxShield()));
 	}
 
-	else if (Data.EvaluatedData.Attribute == GetDamageAttribute()) //쉴드 로직
+	else if (Data.EvaluatedData.Attribute == GetDamageAttribute())
 	{
 		const float LocalDamage = GetDamage();
-		SetDamage(0.f);                  // 메타값 즉시 소비(리셋)
+		SetDamage(0.f);
 
-		if (LocalDamage > 0.f)
+		static const FGameplayTag DeadTag =
+			FGameplayTag::RequestGameplayTag(FName("state.Dead"));
+		if (Data.Target.HasMatchingGameplayTag(DeadTag))
 		{
-			float Remaining = LocalDamage;
-
-			// 1) 쉴드로 먼저 흡수
-			if (GetShield() > 0.f)
-			{
-				const float Absorbed = FMath::Min(GetShield(), Remaining);
-				SetShield(GetShield() - Absorbed);
-				Remaining -= Absorbed;
-			}
-
-			// 2) 넘친 만큼만 체력
-			if (Remaining > 0.f)
-			{
-				SetHealth(FMath::Clamp(GetHealth() - Remaining, 0.f, GetMaxHealth()));
-				if (GetHealth() <= 0.f)
-				{
-					OnHealthZero.Broadcast(Data);
-				}
-			}
-
-			OnDamaged.Broadcast(Data);
+			return;   // 죽은 대상은 데미지 무시
 		}
+
+		if (LocalDamage <= 0.f) return;
+
+		static const FGameplayTag IncapTag =
+			FGameplayTag::RequestGameplayTag(FName("state.Incapacitated"));
+
+		// 다운 중이면 IncapHealth로 직행 (쉴드 무시)
+		if (Data.Target.HasMatchingGameplayTag(IncapTag))
+		{
+			SetIncapHealth(FMath::Clamp(GetIncapHealth() - LocalDamage, 0.f, GetMaxIncapHealth()));
+			if (GetIncapHealth() <= 0.f)
+			{
+				OnIncapHealthZero.Broadcast(Data);
+			}
+			OnDamaged.Broadcast(Data);
+			return;
+		}
+
+		// 평상시: 쉴드 → 체력, 넘친 건 버림
+		float Remaining = LocalDamage;
+		if (GetShield() > 0.f)
+		{
+			const float Absorbed = FMath::Min(GetShield(), Remaining);
+			SetShield(GetShield() - Absorbed);
+			Remaining -= Absorbed;
+		}
+		if (Remaining > 0.f)
+		{
+			SetHealth(FMath::Clamp(GetHealth() - Remaining, 0.f, GetMaxHealth()));
+			if (GetHealth() <= 0.f)
+			{
+				OnHealthZero.Broadcast(Data);
+			}
+		}
+		OnDamaged.Broadcast(Data);
 	}
 
 	else if (Data.EvaluatedData.Attribute == GetHealAttribute())
