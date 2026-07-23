@@ -31,15 +31,16 @@ ALMS_TeamProjectCharacter::ALMS_TeamProjectCharacter()
 {
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
-		
-	// Keep the character facing the camera yaw so third-person weapon traces match the player's aim direction.
+	// 슈터 방식: 캐릭터 몸이 컨트롤러(카메라) Yaw를 따라 회전한다.
+	// 이 회전은 언리얼이 자동으로 서버/모든 클라이언트에 복제하므로, 조준 방향이 모두에게 일치한다.
+	// (3인칭 무기 트레이스도 플레이어 조준 방향과 일치)
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = true;
 	bUseControllerRotationRoll = false;
 
 	// Configure character movement
-	GetCharacterMovement()->bOrientRotationToMovement = false;
-	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
+	GetCharacterMovement()->bOrientRotationToMovement = false; // 이동 방향이 아니라 카메라 방향을 따른다
+	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f); // ...at this rotation rate
 
 	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
 	// instead of recompiling to adjust them
