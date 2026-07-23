@@ -148,6 +148,9 @@ public:
 
 protected:
 	/** Called for movement input */
+	void Input_Jump();
+
+	/** Called for movement input */
 	void Move(const FInputActionValue& Value);
 
 	/** Called for looking input */
