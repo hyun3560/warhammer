@@ -125,7 +125,21 @@ void ULMSAttributeSet::PostGameplayEffectExecute(const FGameplayEffectModCallbac
 		{
 			return;   // 죽은 대상은 데미지 무시
 		}
+		if (UAbilitySystemComponent* SourceASC =
+			Data.EffectSpec.GetContext().GetOriginalInstigatorAbilitySystemComponent())
+		{
+			if (SourceASC != &Data.Target)   // 자기 자신은 통과
+			{
+				static const FGameplayTag TeamPlayerTag =
+					FGameplayTag::RequestGameplayTag(FName("Team.Player"));
 
+				if (SourceASC->HasMatchingGameplayTag(TeamPlayerTag) &&
+					Data.Target.HasMatchingGameplayTag(TeamPlayerTag))
+				{
+					return;
+				}
+			}
+		}
 		if (LocalDamage <= 0.f) return;
 
 		static const FGameplayTag IncapTag =
