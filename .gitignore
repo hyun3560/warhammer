@@ -1,4 +1,4 @@
-# Visual Studio 2015 user specific files
+﻿# Visual Studio 2015 user specific files
 .vs/
 
 # Compiled Object files
@@ -89,3 +89,9 @@ Content/Resource/*
 Content/Resource/Scifi_desert_city/*
 !Content/Resource/Scifi_desert_city/Level/
 Content/Resource/Scifi_desert_city/Level/*
+Content/ParagonIggyScorch/
+Content/ParagonGrux/
+Content/ParagonGRIMexe/
+Content/ParagonKwang/
+Content/ParagonSevarog/
+_LocalOnly/

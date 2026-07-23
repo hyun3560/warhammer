@@ -16,6 +16,7 @@ void ABombObjectiveManager::BeginPlay()
 
 void ABombObjectiveManager::StartBombObjective()
 {
+	// 중복 실행 방지
 	if (CurrentState != EBombObjectiveState::Idle)
 	{
 		return;

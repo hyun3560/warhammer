@@ -51,29 +51,39 @@ protected:
 	void StartExplosionSequence(bool bSuccess);
 
 protected:
+	// 플레이어가 시작점까지 돌아와야 하는 제한 시간
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Bomb Objective")
-	int32 ReturnTimeLimit = 60; // 플레이어가 시작점까지 돌아와야 하는 제한 시간
+	int32 ReturnTimeLimit = 60; 
 
+	// 현재 남은 시간
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Bomb Objective")
 	int32 RemainingTime = 0;
 
+	// 현재 미션 상태
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Bomb Objective")
 	EBombObjectiveState CurrentState = EBombObjectiveState::Idle;
 
+
+	//레벨시퀸스 종료 후 성공/실패 여부 저장 변수
 	bool bExplosionWasSuccess = false;
 
 	FTimerHandle ReturnCountdownTimerHandle;
 
 protected:
+
+	// 60초 카운트다운 UI를 갱신할 때 호출
 	UFUNCTION(BlueprintImplementableEvent, Category = "Bomb Objective|UI")
 	void OnReturnCountdownChanged(int32 NewRemainingTime);
 
+	// 타이머 UI를 숨길 때 호출
 	UFUNCTION(BlueprintImplementableEvent, Category = "Bomb Objective|UI")
 	void OnCountdownHidden();
 
+	// 폭발 레벨시퀀스를 재생요청 이벤트
 	UFUNCTION(BlueprintImplementableEvent, Category = "Bomb Objective|Sequence")
 	void OnPlayExplosionSequence(bool bSuccess);
 
+	// 결과 화면을 띄울 때 호출
 	UFUNCTION(BlueprintImplementableEvent, Category = "Bomb Objective|UI")
 	void OnShowResultScreen(bool bSuccess);
 };
