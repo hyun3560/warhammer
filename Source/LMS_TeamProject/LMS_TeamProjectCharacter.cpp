@@ -755,9 +755,16 @@ void ALMS_TeamProjectCharacter::OnInteractTargetChanged(AActor* NewTarget, FGame
 
 	if (NewTarget)
 	{
+		static const FGameplayTag RescueAllType =
+			FGameplayTag::RequestGameplayTag(FName("Interaction.RescueAll"));
+
+		const FText InteractionText = InteractionType.MatchesTagExact(RescueAllType)
+			? FText::FromString(TEXT("전원 구조하기"))
+			: FText::FromString(TEXT("구조하기"));
+
 		CombatHUDPresenter->ShowInteractionPrompt(
 			FText::FromString(TEXT("E")),
-			FText::FromString(TEXT("구조하기"))
+			InteractionText
 		);
 	}
 	else
