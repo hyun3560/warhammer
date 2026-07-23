@@ -142,12 +142,24 @@ void ULMSCombatHUDPresenterComponent::HandleAmmoChanged(int32 CurrentAmmo, int32
 			CachedWeaponComponent->GetCurrentWeaponHUDIcon(),
 			CachedWeaponComponent->ShouldDisplayAmmoOnHUD()
 		);
+		UpdateSkillCooldownUI(
+			CachedWeaponComponent->GetSkillCooldownRemaining(),
+			CachedWeaponComponent->GetSkillCooldownDuration()
+		);
 	}
 }
 
 void ULMSCombatHUDPresenterComponent::HandleWeaponHUDChanged(UTexture2D* WeaponIcon, bool bShowAmmo)
 {
 	UpdateWeaponInfoUI(WeaponIcon, bShowAmmo);
+
+	if (CachedWeaponComponent)
+	{
+		UpdateSkillCooldownUI(
+			CachedWeaponComponent->GetSkillCooldownRemaining(),
+			CachedWeaponComponent->GetSkillCooldownDuration()
+		);
+	}
 }
 
 // 무기 스킬 쿨타임이 바뀌면 HUD 스킬 쿨타임 UI를 갱신합니다.
@@ -251,6 +263,10 @@ void ULMSCombatHUDPresenterComponent::UpdateAllCombatHUD()
 		UpdateWeaponInfoUI(
 			CachedWeaponComponent->GetCurrentWeaponHUDIcon(),
 			CachedWeaponComponent->ShouldDisplayAmmoOnHUD()
+		);
+		UpdateSkillCooldownUI(
+			CachedWeaponComponent->GetSkillCooldownRemaining(),
+			CachedWeaponComponent->GetSkillCooldownDuration()
 		);
 	}
 }

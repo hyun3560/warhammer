@@ -14,8 +14,6 @@
 #include "LMSAttributeSet.h"
 #include "LMS_TeamProjectPlayerState.h"
 #include "LMSGameplayAbility.h"
-#include "LMSInteractableInterface.h"
-#include "InteractionDetectorComponent.h"
 #include "GameplayEffect.h"
 #include "Weapons/LMSWeaponComponent.h"
 #include "PingMarker.h"
@@ -23,8 +21,6 @@
 #include "UI/IndicatorManagerComponent.h"
 #include "UI/LMSCombatHUDPresenterComponent.h"
 #include "Kismet/GameplayStatics.h"
-#include "LMSSpectatorPawn.h"
-#include "GameFramework/GameStateBase.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -35,15 +31,15 @@ ALMS_TeamProjectCharacter::ALMS_TeamProjectCharacter()
 {
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
-
-	// Don't rotate when the controller rotates. Let that just affect the camera.
+		
+	// Keep the character facing the camera yaw so third-person weapon traces match the player's aim direction.
 	bUseControllerRotationPitch = false;
-	bUseControllerRotationYaw = false;
+	bUseControllerRotationYaw = true;
 	bUseControllerRotationRoll = false;
 
 	// Configure character movement
-	GetCharacterMovement()->bOrientRotationToMovement = true; // Character moves in the direction of input...	
-	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f); // ...at this rotation rate
+	GetCharacterMovement()->bOrientRotationToMovement = false;
+	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
 
 	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
 	// instead of recompiling to adjust them
@@ -67,9 +63,6 @@ ALMS_TeamProjectCharacter::ALMS_TeamProjectCharacter()
 
 	WeaponComponent = CreateDefaultSubobject<ULMSWeaponComponent>(TEXT("WeaponComponent"));
 
-	InteractionDetector = CreateDefaultSubobject<UInteractionDetectorComponent>(TEXT("InteractionDetector"));
-	InteractionDetector->SetupAttachment(RootComponent);
-
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character)
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
 
@@ -87,16 +80,16 @@ void ALMS_TeamProjectCharacter::PossessedBy(AController* NewController)
 {
 	Super::PossessedBy(NewController);
 
-	InitAbilityActorInfo();
-	GiveDefaultAbilities();
-	ApplyDefaultEffects();
+		InitAbilityActorInfo();
+		GiveDefaultAbilities();
+		ApplyDefaultEffects();
 
-	GetWorldTimerManager().SetTimer(
-		CoherencyTimerHandle,
-		this,
-		&ThisClass::CheckCoherency,
-		0.25f,
-		true);
+		GetWorldTimerManager().SetTimer(
+			CoherencyTimerHandle,
+			this,
+			&ThisClass::CheckCoherency,
+			0.25f,
+			true);
 }
 
 void ALMS_TeamProjectCharacter::OnRep_PlayerState()
@@ -227,53 +220,12 @@ void ALMS_TeamProjectCharacter::OnSpeedChanged(const FOnAttributeChangeData& Dat
 
 void ALMS_TeamProjectCharacter::OnAbilityInputPressed(ELMSAbilityInputID InputID)
 {
-	// Interact로 들어오면 감지된 대상에게 물어 실제 InputID로 치환
-	if (InputID == ELMSAbilityInputID::Interact)
-	{
-		AActor* Target = InteractionDetector ? InteractionDetector->GetCurrentTarget() : nullptr;
-		if (!Target || !Target->Implements<ULMSInteractableInterface>())
-		{
-			return;
-		}
-		if (!ILMSInteractableInterface::Execute_CanInteract(Target, this))
-		{
-			return;
-		}
-
-		InputID = static_cast<ELMSAbilityInputID>(
-			ILMSInteractableInterface::Execute_GetInteractInputID(Target));
-
-		CachedInteractInputID = InputID;   // Released 때 라우팅에 사용
-	}
-
 	UE_LOG(LogTemplateCharacter, Log, TEXT("Ability input pressed: %d"), static_cast<int32>(InputID));
 
 	if (AbilitySystemComponent)
 	{
 		const int32 InputIDValue = static_cast<int32>(InputID);
-		bool bFoundMatchingAbility = false;
-
 		AbilitySystemComponent->AbilityLocalInputPressed(InputIDValue);
-
-		for (const FGameplayAbilitySpec& AbilitySpec : AbilitySystemComponent->GetActivatableAbilities())
-		{
-			if (AbilitySpec.InputID != InputIDValue || !AbilitySpec.Ability)
-			{
-				continue;
-			}
-
-			bFoundMatchingAbility = true;
-
-			if (!AbilitySpec.IsActive())
-			{
-				AbilitySystemComponent->TryActivateAbility(AbilitySpec.Handle);
-			}
-		}
-
-		if (!bFoundMatchingAbility)
-		{
-			UE_LOG(LogTemplateCharacter, Warning, TEXT("No ability found for input: %d"), InputIDValue);
-		}
 	}
 	else
 	{
@@ -283,17 +235,6 @@ void ALMS_TeamProjectCharacter::OnAbilityInputPressed(ELMSAbilityInputID InputID
 
 void ALMS_TeamProjectCharacter::OnAbilityInputReleased(ELMSAbilityInputID InputID)
 {
-	// Interact로 들어오면 Pressed 때 켠 실제 InputID로 치환
-	if (InputID == ELMSAbilityInputID::Interact)
-	{
-		if (CachedInteractInputID == ELMSAbilityInputID::None)
-		{
-			return;   // 애초에 활성화 안 됐음
-		}
-		InputID = CachedInteractInputID;
-		CachedInteractInputID = ELMSAbilityInputID::None;
-	}
-
 	UE_LOG(LogTemplateCharacter, Log, TEXT("Ability input released: %d"), static_cast<int32>(InputID));
 
 	if (AbilitySystemComponent)
@@ -394,71 +335,6 @@ void ALMS_TeamProjectCharacter::HandleIncapHealthZero(const FGameplayEffectModCa
 
 	}
 
-
-	if (APlayerController* PC = Cast<APlayerController>(GetController()))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[Spec] PC 유효, 스폰 시도"));
-
-		AActor* AllyToWatch = FindFirstLivingAlly();
-
-		FActorSpawnParameters SpawnParams;
-		SpawnParams.Owner = this;
-		SpawnParams.SpawnCollisionHandlingOverride =
-			ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-		ALMSSpectatorPawn* SpecPawn = GetWorld()->SpawnActor<ALMSSpectatorPawn>(
-			SpectatorPawnClass,
-			GetActorLocation(), GetActorRotation(), SpawnParams);
-
-		UE_LOG(LogTemp, Warning, TEXT("[Spec] SpawnActor 결과: %s"),
-			SpecPawn ? TEXT("성공") : TEXT("실패(nullptr)"));
-
-		if (SpecPawn)
-		{
-			PC->Possess(SpecPawn);
-			UE_LOG(LogTemp, Warning, TEXT("[Spec] Possess 호출됨, 현재 폰: %s"),
-				*GetNameSafe(PC->GetPawn()));
-
-			if (AllyToWatch) SpecPawn->SetSpectateTarget(AllyToWatch);
-		}
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[Spec] PC 캐스트 실패 - 여기가 문제"));
-	}
-
-
-}
-
-AActor* ALMS_TeamProjectCharacter::FindFirstLivingAlly() const
-{
-	AGameStateBase* GS = GetWorld()->GetGameState();
-	if (!GS) return nullptr;
-
-	static const FGameplayTag DeadTag =
-		FGameplayTag::RequestGameplayTag(FName("state.Dead"));
-
-	for (APlayerState* PS : GS->PlayerArray)
-	{
-		if (!PS) continue;
-
-		// 자기 자신 제외
-		if (PS == GetPlayerState()) continue;
-
-		ACharacter* Char = Cast<ACharacter>(PS->GetPawn());
-		if (!Char) continue;
-
-		// ASC 꺼내서 state.Dead 확인
-		IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(Char);
-		if (!ASI) continue;
-
-		UAbilitySystemComponent* ASC = ASI->GetAbilitySystemComponent();
-		if (!ASC || ASC->HasMatchingGameplayTag(DeadTag)) continue;
-
-		// 살아있는 아군 발견
-		return Char;
-	}
-	return nullptr;
 }
 
 void ALMS_TeamProjectCharacter::CheckCoherency()
@@ -513,7 +389,7 @@ void ALMS_TeamProjectCharacter::CheckCoherency()
 		FGameplayEffectSpecHandle HealSpec =
 			AbilitySystemComponent->MakeOutgoingSpec(HealEffect, 1.f, Context);
 
-
+		
 
 
 		HealSpec.Data->SetSetByCallerMagnitude(
@@ -532,45 +408,50 @@ void ALMS_TeamProjectCharacter::CheckCoherency()
 
 }
 
-//////////////////////////////////////////////////////////////////////////
-// ILMSInteractableInterface — 다운된 자신이 곧 상호작용(부활) 대상
-
-bool ALMS_TeamProjectCharacter::CanInteract_Implementation(AActor* Interactor) const
+void ALMS_TeamProjectCharacter::TraceForReviveTarget()
 {
-	if (!Interactor || Interactor == this)
-		return false;
+	// 로컬 컨트롤 플레이어만 트레이스 (남의 화면 기준은 의미 없음)
+	if (!IsLocallyControlled())
+	{
+		return;
+	}
 
-	UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
-	if (!ASC)
-		return false;
+	const FVector Start = GetActorLocation();
+	const FVector End = Start + GetActorForwardVector() * ReviveTraceDistance;
 
-	static const FGameplayTag IncapTag =
-		FGameplayTag::RequestGameplayTag(FName("state.Incapacitated"));
+	FHitResult Hit;
+	FCollisionQueryParams Params;
+	Params.AddIgnoredActor(this);   // 나 자신 무시
 
-	static const FGameplayTag BeingRevivedTag =
-		FGameplayTag::RequestGameplayTag(FName("state.BeingRevived"));
+	const bool bHit = GetWorld()->LineTraceSingleByChannel(
+		Hit, Start, End, ECC_Pawn, Params);
 
-	return ASC->HasMatchingGameplayTag(IncapTag) && !ASC->HasMatchingGameplayTag(BeingRevivedTag);
-}
+	// 디버그 시각화
+	DrawDebugLine(GetWorld(), Start, End, FColor::Red, false, 0.2f, 0, 1.f);
+	if (bHit)
+	{
+		DrawDebugSphere(GetWorld(), Hit.ImpactPoint, 10.f, 8, FColor::Green, false, 0.2f);
+	}
 
-FGameplayTag ALMS_TeamProjectCharacter::GetInteractionType_Implementation() const
-{
-	static const FGameplayTag ReviveType =
-		FGameplayTag::RequestGameplayTag(FName("Interaction.Revive"));
-	return ReviveType;
-}
+	// 맞은 대상이 다운 상태(state.Incapacitated)면 부활 후보로 확정
+	AActor* NewTarget = nullptr;
+	if (bHit && Hit.GetActor())
+	{
+		if (IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(Hit.GetActor()))
+		{
+			if (UAbilitySystemComponent* TargetASC = ASI->GetAbilitySystemComponent())
+			{
+				if (TargetASC->HasMatchingGameplayTag(
+					FGameplayTag::RequestGameplayTag("state.Incapacitated")))
+				{
+					NewTarget = Hit.GetActor();
+				}
+			}
+		}
+	}
 
-int32 ALMS_TeamProjectCharacter::GetInteractInputID_Implementation() const
-{
-	return static_cast<int32>(ELMSAbilityInputID::Interact_Revive);
-}
+	CurrentReviveTarget = NewTarget;
 
-//////////////////////////////////////////////////////////////////////////
-// InteractionDetector 대상 변경 → HUD 프롬프트 표시/숨김
-// (기존 TraceForReviveTarget에 있던 프롬프트 로직을 여기로 이관)
-
-void ALMS_TeamProjectCharacter::OnInteractTargetChanged(AActor* NewTarget, FGameplayTag InteractionType)
-{
 	APlayerController* PlayerController = Cast<APlayerController>(GetController());
 	if (!PlayerController)
 	{
@@ -584,7 +465,7 @@ void ALMS_TeamProjectCharacter::OnInteractTargetChanged(AActor* NewTarget, FGame
 		return;
 	}
 
-	if (NewTarget)
+	if (CurrentReviveTarget)
 	{
 		CombatHUDPresenter->ShowInteractionPrompt(
 			FText::FromString(TEXT("E")),
@@ -596,6 +477,8 @@ void ALMS_TeamProjectCharacter::OnInteractTargetChanged(AActor* NewTarget, FGame
 		CombatHUDPresenter->HideInteractionPrompt();
 	}
 }
+
+
 
 void ALMS_TeamProjectCharacter::BeginPlay()
 {
@@ -620,13 +503,12 @@ void ALMS_TeamProjectCharacter::BeginPlay()
 		}
 	}
 
-	// 부활 대상 감지는 InteractionDetector 컴포넌트가 담당.
-	// 대상 변경 시 HUD 프롬프트를 갱신하도록 델리게이트 바인딩(로컬 컨트롤 한정 — 컴포넌트가 로컬에서만 감지).
-	if (InteractionDetector)
-	{
-		InteractionDetector->OnTargetChanged.AddDynamic(
-			this, &ALMS_TeamProjectCharacter::OnInteractTargetChanged);
-	}
+	GetWorldTimerManager().SetTimer(
+		ReviveTraceTimerHandle, this,
+		&ALMS_TeamProjectCharacter::TraceForReviveTarget,
+		0.15f, true);
+
+	
 }
 
 void ALMS_TeamProjectCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -669,7 +551,7 @@ void ALMS_TeamProjectCharacter::SetupPlayerInputComponent(UInputComponent* Playe
 {
 	// Set up action bindings
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent)) {
-
+		
 		// Jumping
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ACharacter::Jump);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ACharacter::StopJumping);
@@ -756,7 +638,7 @@ void ALMS_TeamProjectCharacter::Move(const FInputActionValue& Value)
 
 		// get forward vector
 		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-
+	
 		// get right vector 
 		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
 
