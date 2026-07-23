@@ -47,6 +47,10 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Montage")
 	TObjectPtr<class UAnimMontage> AttackMontage;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Montage")
+	TObjectPtr<class UAnimMontage> HitMontage;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Montage")
+	TObjectPtr<class UAnimMontage> DeadMontage;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Abilities")
 	TArray<TSubclassOf<UGameplayAbility>> DefaultAbilities;
@@ -64,7 +68,7 @@ private:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Abilities", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<ULMSAttributeSet> AttributeSet;
 
-	//FTimerHandle DeathDestroyTimerHandle;
+	FTimerHandle DeathDestroyTimerHandle;
 
 	void GiveDefaultAbilities();
 
@@ -74,6 +78,6 @@ private:
 	// TakeDamage에서 ApplyModToAttribute 사용 시 PostGameplayEffectExecute가 호출되지 않아
 	// OnHealthZero가 안 불리는 경우를 대비해 직접 호출하는 사망 처리 로직.
 	void HandleDeath();
-
+	UFUNCTION(BlueprintCallable)
 	void HandleDeathDestroy();
 };

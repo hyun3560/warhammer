@@ -143,6 +143,18 @@ float ABaseEnemyCharacter::TakeDamage(float DamageAmount, FDamageEvent const& Da
 		EGameplayModOp::Additive,
 		-ActualDamage);
 
+	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponent())
+	{
+		static const FGameplayTag HitTag = FGameplayTag::RequestGameplayTag(FName("state.Hit"));
+		//static const FGameplayTag HitTag = FGameplayTag::RequestGameplayTag(FName("state.Dead"));
+		if (HitMontage)
+		{
+			FGameplayTagContainer TagContainer(HitTag);
+			ASC->TryActivateAbilitiesByTag(TagContainer);
+		}
+		
+	}
+
 	UE_LOG(LogTemp, Log, TEXT("%s took %.1f damage (ApplyDamage), remaining Health = %.1f"),
 		*GetName(), ActualDamage, AttributeSet ? AttributeSet->GetHealth() : 0.f);
 
@@ -179,7 +191,7 @@ void ABaseEnemyCharacter::HandleDeath()
 	{
 		return;
 	}
-	AbilitySystemComponent->AddReplicatedLooseGameplayTag(DeadTag);
+	//AbilitySystemComponent->AddReplicatedLooseGameplayTag(DeadTag);
 
 	SetActorEnableCollision(false);
 	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
@@ -196,14 +208,27 @@ void ABaseEnemyCharacter::HandleDeath()
 		}
 	}
 
-	HandleDeathDestroy();
+	if (DeadMontage)
+	{
+		FGameplayTagContainer TagContainer(DeadTag);
+		AbilitySystemComponent->TryActivateAbilitiesByTag(TagContainer);
+	}
+	else
+	{
+		HandleDeathDestroy();
+	}
 
-	//GetWorldTimerManager().SetTimer(DeathDestroyTimerHandle, this, &ABaseEnemyCharacter::HandleDeathDestroy, DeathDestroyDelay, false);
+	//
+
+	GetWorldTimerManager().SetTimer(DeathDestroyTimerHandle, this, &ABaseEnemyCharacter::HandleDeathDestroy, 3, false);
 }
 
 void ABaseEnemyCharacter::HandleDeathDestroy()
 {
-	Destroy();
+	if (HasAuthority)
+	{
+		Destroy();
+	}
 }
 
 
