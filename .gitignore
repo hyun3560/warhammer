@@ -75,6 +75,7 @@ Plugins/**/Intermediate/*
 DerivedDataCache/*
 
 # Local-only large asset packs
+Content/_LocalOnly/
 Content/Scifi_desert_city/
 Content/Sci_FI_Valley_Village/
 Content/Paragon*/
