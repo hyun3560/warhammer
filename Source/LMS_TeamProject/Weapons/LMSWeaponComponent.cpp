@@ -9,6 +9,7 @@
 #include "Engine/DataTable.h"
 #include "Engine/Texture2D.h"
 #include "GameFramework/Character.h"
+#include "GameplayEffect.h"
 #include "Kismet/GameplayStatics.h"
 #include "LMSWeaponBase.h"
 #include "LMSWeaponPrimaryAbility.h"
@@ -70,6 +71,9 @@ bool ULMSWeaponComponent::EquipWeaponFromData(const FWeaponData& WeaponData)
 	BroadcastWeaponHUDChanged();
 
 	GrantCurrentWeaponAbilities();
+	SkillCooldownEndTime = 0.f;
+	SkillCooldownDuration = ResolveCurrentWeaponSkillCooldownDuration();
+	BroadcastSkillCooldownChanged(0.f, SkillCooldownDuration);
 
 	UE_LOG(
 		LogTemp,
@@ -111,6 +115,17 @@ bool ULMSWeaponComponent::EquipWeaponByID(FName WeaponID)
 	}
 
 	return false;
+}
+
+float ULMSWeaponComponent::GetSkillCooldownRemaining() const
+{
+	const UWorld* World = GetWorld();
+	if (!World || SkillCooldownEndTime <= 0.f)
+	{
+		return 0.f;
+	}
+
+	return FMath::Max(0.f, SkillCooldownEndTime - World->GetTimeSeconds());
 }
 
 void ULMSWeaponComponent::UnequipCurrentWeapon()
@@ -164,6 +179,7 @@ void ULMSWeaponComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& 
 	DOREPLIFETIME(ULMSWeaponComponent, ReserveAmmo);
 	DOREPLIFETIME(ULMSWeaponComponent, SkillCooldownEndTime);
 	DOREPLIFETIME(ULMSWeaponComponent, SkillCooldownDuration);
+	DOREPLIFETIME(ULMSWeaponComponent, WeaponMontageState);
 }
 
 void ULMSWeaponComponent::StartAttack()
@@ -284,7 +300,11 @@ void ULMSWeaponComponent::BroadcastWeaponHUDChanged()
 void ULMSWeaponComponent::StartSkillCooldown(float CurrentCooldown, float MaxCooldown)
 {
 	UWorld* World = GetWorld();
-	if (!World || CurrentCooldown <= 0.f || MaxCooldown <= 0.f)
+	const float ResolvedMaxCooldown = MaxCooldown > 0.f
+		? MaxCooldown
+		: ResolveCurrentWeaponSkillCooldownDuration();
+
+	if (!World || CurrentCooldown <= 0.f || ResolvedMaxCooldown <= 0.f)
 	{
 		if (World)
 		{
@@ -292,12 +312,12 @@ void ULMSWeaponComponent::StartSkillCooldown(float CurrentCooldown, float MaxCoo
 		}
 
 		SkillCooldownEndTime = 0.f;
-		SkillCooldownDuration = 0.f;
-		BroadcastSkillCooldownChanged(0.f, FMath::Max(MaxCooldown, 0.f));
+		SkillCooldownDuration = FMath::Max(ResolvedMaxCooldown, 0.f);
+		BroadcastSkillCooldownChanged(0.f, SkillCooldownDuration);
 		return;
 	}
 
-	SkillCooldownDuration = MaxCooldown;
+	SkillCooldownDuration = ResolvedMaxCooldown;
 	SkillCooldownEndTime = World->GetTimeSeconds() + CurrentCooldown;
 	BroadcastSkillCooldownChanged(CurrentCooldown, SkillCooldownDuration);
 
@@ -338,6 +358,34 @@ void ULMSWeaponComponent::CacheWeaponDataByID(FName WeaponID)
 	CurrentWeaponData = FWeaponData();
 }
 
+float ULMSWeaponComponent::ResolveCurrentWeaponSkillCooldownDuration() const
+{
+	if (!CurrentWeaponData.WeaponSkill)
+	{
+		return 0.f;
+	}
+
+	const UGameplayAbility* AbilityCDO = CurrentWeaponData.WeaponSkill->GetDefaultObject<UGameplayAbility>();
+	if (!AbilityCDO)
+	{
+		return 0.f;
+	}
+
+	const UGameplayEffect* CooldownEffect = AbilityCDO->GetCooldownGameplayEffect();
+	if (!CooldownEffect || CooldownEffect->DurationPolicy != EGameplayEffectDurationType::HasDuration)
+	{
+		return 0.f;
+	}
+
+	float Duration = 0.f;
+	if (CooldownEffect->DurationMagnitude.GetStaticMagnitudeIfPossible(1.f, Duration))
+	{
+		return FMath::Max(Duration, 0.f);
+	}
+
+	return 0.f;
+}
+
 void ULMSWeaponComponent::RestartReplicatedSkillCooldownTimer()
 {
 	UWorld* World = GetWorld();
@@ -349,6 +397,11 @@ void ULMSWeaponComponent::RestartReplicatedSkillCooldownTimer()
 	World->GetTimerManager().ClearTimer(SkillCooldownTimerHandle);
 
 	const float CurrentCooldown = FMath::Max(0.f, SkillCooldownEndTime - World->GetTimeSeconds());
+	if (SkillCooldownDuration <= 0.f)
+	{
+		SkillCooldownDuration = ResolveCurrentWeaponSkillCooldownDuration();
+	}
+
 	BroadcastSkillCooldownChanged(CurrentCooldown, SkillCooldownDuration);
 
 	if (CurrentCooldown > 0.f && SkillCooldownDuration > 0.f)
@@ -373,7 +426,11 @@ void ULMSWeaponComponent::OnRep_EquippedWeaponID()
 
 	BroadcastAmmoChanged();
 	BroadcastWeaponHUDChanged();
-	BroadcastSkillCooldownChanged(0.f, 0.f);
+	if (SkillCooldownEndTime <= 0.f)
+	{
+		SkillCooldownDuration = ResolveCurrentWeaponSkillCooldownDuration();
+	}
+	RestartReplicatedSkillCooldownTimer();
 }
 
 void ULMSWeaponComponent::OnRep_CurrentWeapon()
@@ -440,6 +497,26 @@ void ULMSWeaponComponent::OnRep_SkillCooldown()
 	RestartReplicatedSkillCooldownTimer();
 }
 
+void ULMSWeaponComponent::OnRep_WeaponMontageState()
+{
+	const ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (OwnerCharacter && OwnerCharacter->IsLocallyControlled())
+	{
+		return;
+	}
+
+	if (WeaponMontageState.bStop)
+	{
+		StopThirdPersonWeaponMontageLocal(WeaponMontageState.Montage, 0.15f);
+		return;
+	}
+
+	PlayThirdPersonWeaponMontageLocal(
+		WeaponMontageState.Montage,
+		WeaponMontageState.SectionName,
+		WeaponMontageState.PlayRate);
+}
+
 void ULMSWeaponComponent::UpdateSkillCooldown()
 {
 	UWorld* World = GetWorld();
@@ -455,7 +532,6 @@ void ULMSWeaponComponent::UpdateSkillCooldown()
 	{
 		World->GetTimerManager().ClearTimer(SkillCooldownTimerHandle);
 		SkillCooldownEndTime = 0.f;
-		SkillCooldownDuration = 0.f;
 	}
 }
 
@@ -777,19 +853,17 @@ void ULMSWeaponComponent::BeginWeaponTrace(FName StartSocketName, FName EndSocke
 		return;
 	}
 
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (OwnerCharacter && !OwnerCharacter->IsLocallyControlled())
+	{
+		bIsWeaponTracing = false;
+		return;
+	}
+
 	ActiveTraceStartSocketName = StartSocketName.IsNone() ? DefaultTraceStartSocketName : StartSocketName;
 	ActiveTraceEndSocketName = EndSocketName.IsNone() ? DefaultTraceEndSocketName : EndSocketName;
 	ActiveWeaponTraceRadius = TraceRadius > 0.f ? TraceRadius : WeaponTraceRadius;
-	ActiveWeaponTraceDamageMultiplier = DamageMultiplier;
-	if (RemainingBoostedWeaponTraces > 0 && MeleeDamageBoostMultiplier > 1.f)
-	{
-		ActiveWeaponTraceDamageMultiplier *= MeleeDamageBoostMultiplier;
-		--RemainingBoostedWeaponTraces;
-		if (RemainingBoostedWeaponTraces <= 0)
-		{
-			ClearMeleeDamageBoost();
-		}
-	}
+	ActiveWeaponTraceDamageMultiplier = ConsumeWeaponTraceDamageMultiplier(DamageMultiplier);
 	bDrawDebugWeaponTrace = bDrawDebugTrace;
 	WeaponTraceHitActors.Reset();
 
@@ -800,6 +874,11 @@ void ULMSWeaponComponent::BeginWeaponTrace(FName StartSocketName, FName EndSocke
 	}
 
 	bIsWeaponTracing = true;
+
+	if (OwnerCharacter && !OwnerCharacter->HasAuthority())
+	{
+		ServerBeginFirstPersonWeaponTrace(ActiveWeaponTraceRadius, DamageMultiplier);
+	}
 }
 
 void ULMSWeaponComponent::TickWeaponTrace(float DeltaTime)
@@ -838,6 +917,12 @@ void ULMSWeaponComponent::TickWeaponTrace(float DeltaTime)
 
 void ULMSWeaponComponent::EndWeaponTrace()
 {
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (OwnerCharacter && OwnerCharacter->IsLocallyControlled() && !OwnerCharacter->HasAuthority())
+	{
+		ServerEndFirstPersonWeaponTrace();
+	}
+
 	bIsWeaponTracing = false;
 	bDrawDebugWeaponTrace = false;
 	ActiveWeaponTraceRadius = WeaponTraceRadius;
@@ -902,7 +987,7 @@ void ULMSWeaponComponent::TraceWeaponSegment(const FVector& PreviousPoint, const
 
 	for (const FHitResult& Hit : Hits)
 	{
-		HandleWeaponTraceHit(Hit);
+		HandleWeaponTraceHit(Hit, PreviousPoint, CurrentPoint);
 	}
 
 	if (bDrawDebugWeaponTrace)
@@ -919,7 +1004,7 @@ void ULMSWeaponComponent::TraceWeaponSegment(const FVector& PreviousPoint, const
 	}
 }
 
-void ULMSWeaponComponent::HandleWeaponTraceHit(const FHitResult& Hit)
+void ULMSWeaponComponent::HandleWeaponTraceHit(const FHitResult& Hit, const FVector& TraceStart, const FVector& TraceEnd)
 {
 	AActor* HitActor = Hit.GetActor();
 	ACharacter* OwnerCharacter = GetOwnerCharacter();
@@ -936,6 +1021,224 @@ void ULMSWeaponComponent::HandleWeaponTraceHit(const FHitResult& Hit)
 
 	WeaponTraceHitActors.Add(HitActorPtr);
 
+	if (!OwnerCharacter)
+	{
+		return;
+	}
+
+	if (!OwnerCharacter->HasAuthority())
+	{
+		if (OwnerCharacter->IsLocallyControlled())
+		{
+			ServerApplyFirstPersonWeaponTraceHit(HitActor, TraceStart, TraceEnd);
+		}
+		return;
+	}
+
+	const float TraceDamage = CurrentWeaponData.Damage * ActiveWeaponTraceDamageMultiplier;
+	ULMSDamageLibrary::ApplyDamageEffect(OwnerCharacter, HitActor, TraceDamage, CurrentWeaponData.DamageEffect);
+}
+
+float ULMSWeaponComponent::ConsumeWeaponTraceDamageMultiplier(float DamageMultiplier)
+{
+	float ResolvedDamageMultiplier = DamageMultiplier > 0.f ? DamageMultiplier : 1.f;
+	if (RemainingBoostedWeaponTraces > 0 && MeleeDamageBoostMultiplier > 1.f)
+	{
+		ResolvedDamageMultiplier *= MeleeDamageBoostMultiplier;
+		--RemainingBoostedWeaponTraces;
+		if (RemainingBoostedWeaponTraces <= 0)
+		{
+			ClearMeleeDamageBoost();
+		}
+	}
+
+	return ResolvedDamageMultiplier;
+}
+
+bool ULMSWeaponComponent::IsValidClientWeaponTraceHit(AActor* HitActor, const FVector& TraceStart, const FVector& TraceEnd) const
+{
+	const ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (!OwnerCharacter || !HitActor || HitActor == OwnerCharacter || HitActor == CurrentWeapon || HitActor == FirstPersonWeapon)
+	{
+		return false;
+	}
+
+	if (CurrentWeaponData.WeaponType != ELMSWeaponType::Melee)
+	{
+		return false;
+	}
+
+	const FVector OwnerLocation = OwnerCharacter->GetActorLocation();
+	const float MaxDistanceSquared = FMath::Square(ClientTraceValidationMaxDistance);
+	if (FVector::DistSquared(OwnerLocation, TraceStart) > MaxDistanceSquared ||
+		FVector::DistSquared(OwnerLocation, TraceEnd) > MaxDistanceSquared ||
+		FVector::DistSquared(OwnerLocation, HitActor->GetActorLocation()) > MaxDistanceSquared)
+	{
+		return false;
+	}
+
+	const float AllowedTraceDistance = ActiveWeaponTraceRadius + ClientTraceValidationTolerance;
+	const float ActorDistanceToTrace = FMath::PointDistToSegment(HitActor->GetActorLocation(), TraceStart, TraceEnd);
+	return ActorDistanceToTrace <= AllowedTraceDistance;
+}
+
+void ULMSWeaponComponent::PlayThirdPersonWeaponMontageLocal(UAnimMontage* Montage, FName SectionName, float PlayRate)
+{
+	if (!Montage)
+	{
+		return;
+	}
+
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (!OwnerCharacter || !OwnerCharacter->GetMesh())
+	{
+		return;
+	}
+
+	UAnimInstance* AnimInstance = OwnerCharacter->GetMesh()->GetAnimInstance();
+	if (!AnimInstance)
+	{
+		return;
+	}
+
+	const float MontageLength = AnimInstance->Montage_Play(Montage, PlayRate);
+	if (MontageLength > 0.f && !SectionName.IsNone())
+	{
+		AnimInstance->Montage_JumpToSection(SectionName, Montage);
+	}
+}
+
+void ULMSWeaponComponent::StopThirdPersonWeaponMontageLocal(UAnimMontage* Montage, float BlendOutTime)
+{
+	if (!Montage)
+	{
+		return;
+	}
+
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (!OwnerCharacter || !OwnerCharacter->GetMesh())
+	{
+		return;
+	}
+
+	UAnimInstance* AnimInstance = OwnerCharacter->GetMesh()->GetAnimInstance();
+	if (AnimInstance && AnimInstance->Montage_IsPlaying(Montage))
+	{
+		AnimInstance->Montage_Stop(BlendOutTime, Montage);
+	}
+}
+
+void ULMSWeaponComponent::ReplicateThirdPersonWeaponMontage(UAnimMontage* Montage, FName SectionName, float PlayRate)
+{
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority() || !Montage)
+	{
+		return;
+	}
+
+	WeaponMontageState.Montage = Montage;
+	WeaponMontageState.SectionName = SectionName;
+	WeaponMontageState.PlayRate = PlayRate;
+	WeaponMontageState.bStop = false;
+	++WeaponMontageState.Counter;
+}
+
+void ULMSWeaponComponent::ReplicateStopThirdPersonWeaponMontage(UAnimMontage* Montage)
+{
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority() || !Montage)
+	{
+		return;
+	}
+
+	WeaponMontageState.Montage = Montage;
+	WeaponMontageState.SectionName = NAME_None;
+	WeaponMontageState.PlayRate = 1.f;
+	WeaponMontageState.bStop = true;
+	++WeaponMontageState.Counter;
+}
+
+void ULMSWeaponComponent::PlayReplicatedThirdPersonWeaponMontage(UAnimMontage* Montage, FName SectionName, float PlayRate)
+{
+	if (!Montage)
+	{
+		return;
+	}
+
+	PlayThirdPersonWeaponMontageLocal(Montage, SectionName, PlayRate);
+
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (OwnerCharacter && OwnerCharacter->HasAuthority())
+	{
+		ReplicateThirdPersonWeaponMontage(Montage, SectionName, PlayRate);
+	}
+	else
+	{
+		ServerPlayThirdPersonWeaponMontage(Montage, SectionName, PlayRate);
+	}
+}
+
+void ULMSWeaponComponent::StopReplicatedThirdPersonWeaponMontage(UAnimMontage* Montage, float BlendOutTime)
+{
+	if (!Montage)
+	{
+		return;
+	}
+
+	StopThirdPersonWeaponMontageLocal(Montage, BlendOutTime);
+
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (OwnerCharacter && OwnerCharacter->HasAuthority())
+	{
+		ReplicateStopThirdPersonWeaponMontage(Montage);
+	}
+	else
+	{
+		ServerStopThirdPersonWeaponMontage(Montage);
+	}
+}
+
+void ULMSWeaponComponent::ServerPlayThirdPersonWeaponMontage_Implementation(UAnimMontage* Montage, FName SectionName, float PlayRate)
+{
+	PlayThirdPersonWeaponMontageLocal(Montage, SectionName, PlayRate);
+	ReplicateThirdPersonWeaponMontage(Montage, SectionName, PlayRate);
+}
+
+void ULMSWeaponComponent::ServerStopThirdPersonWeaponMontage_Implementation(UAnimMontage* Montage)
+{
+	StopThirdPersonWeaponMontageLocal(Montage, 0.15f);
+	ReplicateStopThirdPersonWeaponMontage(Montage);
+}
+
+void ULMSWeaponComponent::ServerBeginFirstPersonWeaponTrace_Implementation(float TraceRadius, float DamageMultiplier)
+{
+	if (CurrentWeaponData.WeaponType != ELMSWeaponType::Melee)
+	{
+		return;
+	}
+
+	ActiveWeaponTraceRadius = TraceRadius > 0.f ? TraceRadius : WeaponTraceRadius;
+	ActiveWeaponTraceDamageMultiplier = ConsumeWeaponTraceDamageMultiplier(DamageMultiplier);
+	WeaponTraceHitActors.Reset();
+	bAcceptClientWeaponTraceHits = true;
+}
+
+void ULMSWeaponComponent::ServerApplyFirstPersonWeaponTraceHit_Implementation(AActor* HitActor, FVector TraceStart, FVector TraceEnd)
+{
+	if (!bAcceptClientWeaponTraceHits || !IsValidClientWeaponTraceHit(HitActor, TraceStart, TraceEnd))
+	{
+		return;
+	}
+
+	const TWeakObjectPtr<AActor> HitActorPtr(HitActor);
+	if (WeaponTraceHitActors.Contains(HitActorPtr))
+	{
+		return;
+	}
+
+	WeaponTraceHitActors.Add(HitActorPtr);
+
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
 	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
 	{
 		return;
@@ -943,6 +1246,14 @@ void ULMSWeaponComponent::HandleWeaponTraceHit(const FHitResult& Hit)
 
 	const float TraceDamage = CurrentWeaponData.Damage * ActiveWeaponTraceDamageMultiplier;
 	ULMSDamageLibrary::ApplyDamageEffect(OwnerCharacter, HitActor, TraceDamage, CurrentWeaponData.DamageEffect);
+}
+
+void ULMSWeaponComponent::ServerEndFirstPersonWeaponTrace_Implementation()
+{
+	bAcceptClientWeaponTraceHits = false;
+	WeaponTraceHitActors.Reset();
+	ActiveWeaponTraceRadius = WeaponTraceRadius;
+	ActiveWeaponTraceDamageMultiplier = 1.f;
 }
 
 void ULMSWeaponComponent::FireRangedShot(float DamageMultiplier, float RangeMultiplier, bool bDrawDebugTrace)
@@ -1090,13 +1401,16 @@ bool ULMSWeaponComponent::HandleMeleeComboInputInternal(
 
 		if (LinkedAnimInstance && LinkedComboMontage)
 		{
+			ActiveLinkedComboAnimInstance = LinkedAnimInstance;
+			ActiveLinkedComboMontage = LinkedComboMontage;
+
 			const float LinkedMontageLength = LinkedAnimInstance->Montage_Play(LinkedComboMontage, 1.f);
 			if (LinkedMontageLength > 0.f)
 			{
-				ActiveLinkedComboAnimInstance = LinkedAnimInstance;
-				ActiveLinkedComboMontage = LinkedComboMontage;
 				LinkedAnimInstance->Montage_JumpToSection(FirstSectionName, LinkedComboMontage);
 			}
+
+			ReplicateThirdPersonWeaponMontage(LinkedComboMontage, FirstSectionName);
 		}
 
 		return true;
@@ -1185,6 +1499,7 @@ void ULMSWeaponComponent::StopActiveComboMontage(float BlendOutTime)
 	if (LinkedAnimInstance && LinkedMontage && LinkedAnimInstance->Montage_IsPlaying(LinkedMontage))
 	{
 		LinkedAnimInstance->Montage_Stop(BlendOutTime, LinkedMontage);
+		ReplicateStopThirdPersonWeaponMontage(LinkedMontage);
 	}
 }
 
@@ -1205,6 +1520,14 @@ void ULMSWeaponComponent::NotifyComboSectionBegin(int32 ComboIndex)
 		bComboTransitionQueued = false;
 	}
 	CurrentComboIndex = ComboIndex;
+
+	if (bEnteringNewSection && ComboIndex > 1 && ActiveComboSectionNames.IsValidIndex(ComboIndex - 1))
+	{
+		if (UAnimMontage* LinkedMontage = ActiveLinkedComboMontage.Get())
+		{
+			ReplicateThirdPersonWeaponMontage(LinkedMontage, ActiveComboSectionNames[ComboIndex - 1]);
+		}
+	}
 }
 
 void ULMSWeaponComponent::NotifyComboSectionEnd(int32 ComboIndex)

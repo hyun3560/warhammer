@@ -25,6 +25,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "LMSSpectatorPawn.h"
 #include "GameFramework/GameStateBase.h"
+#include "Net/UnrealNetwork.h"
+#include "GameFramework/PlayerState.h"
 
 DEFINE_LOG_CATEGORY(LogTemplateCharacter);
 
@@ -36,14 +38,13 @@ ALMS_TeamProjectCharacter::ALMS_TeamProjectCharacter()
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
 
-	// Don't rotate when the controller rotates. Let that just affect the camera.
+	// Keep the character facing the camera yaw so third-person weapon traces match the player's aim direction.
 	bUseControllerRotationPitch = false;
-	bUseControllerRotationYaw = false;
+	bUseControllerRotationYaw = true;
 	bUseControllerRotationRoll = false;
-
 	// Configure character movement
-	GetCharacterMovement()->bOrientRotationToMovement = true; // Character moves in the direction of input...	
-	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f); // ...at this rotation rate
+	GetCharacterMovement()->bOrientRotationToMovement = false;
+	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
 
 	// Note: For faster iteration times these variables, and many more, can be tweaked in the Character Blueprint
 	// instead of recompiling to adjust them
@@ -139,6 +140,8 @@ void ALMS_TeamProjectCharacter::InitAbilityActorInfo()
 
 	// ★ MoveSpeed 변경 구독
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
+		AttributeSet->GetSpeedAttribute()).RemoveAll(this);
+	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
 		AttributeSet->GetSpeedAttribute())
 		.AddUObject(this, &ALMS_TeamProjectCharacter::OnSpeedChanged);
 
@@ -165,7 +168,7 @@ void ALMS_TeamProjectCharacter::InitAbilityActorInfo()
 
 void ALMS_TeamProjectCharacter::GiveDefaultAbilities()
 {
-	if (!HasAuthority() || !AbilitySystemComponent)
+	if (!HasAuthority() || !AbilitySystemComponent || bDefaultsInitialized)  
 	{
 		return;
 	}
@@ -192,7 +195,7 @@ void ALMS_TeamProjectCharacter::GiveDefaultAbilities()
 
 void ALMS_TeamProjectCharacter::ApplyDefaultEffects()
 {
-	if (!HasAuthority() || !AbilitySystemComponent)
+	if (!HasAuthority() || !AbilitySystemComponent || bDefaultsInitialized)
 	{
 		return;
 	}
@@ -215,6 +218,7 @@ void ALMS_TeamProjectCharacter::ApplyDefaultEffects()
 		}
 
 	}
+	bDefaultsInitialized = true;
 }
 
 void ALMS_TeamProjectCharacter::OnSpeedChanged(const FOnAttributeChangeData& Data)
@@ -251,29 +255,7 @@ void ALMS_TeamProjectCharacter::OnAbilityInputPressed(ELMSAbilityInputID InputID
 	if (AbilitySystemComponent)
 	{
 		const int32 InputIDValue = static_cast<int32>(InputID);
-		bool bFoundMatchingAbility = false;
-
 		AbilitySystemComponent->AbilityLocalInputPressed(InputIDValue);
-
-		for (const FGameplayAbilitySpec& AbilitySpec : AbilitySystemComponent->GetActivatableAbilities())
-		{
-			if (AbilitySpec.InputID != InputIDValue || !AbilitySpec.Ability)
-			{
-				continue;
-			}
-
-			bFoundMatchingAbility = true;
-
-			if (!AbilitySpec.IsActive())
-			{
-				AbilitySystemComponent->TryActivateAbility(AbilitySpec.Handle);
-			}
-		}
-
-		if (!bFoundMatchingAbility)
-		{
-			UE_LOG(LogTemplateCharacter, Warning, TEXT("No ability found for input: %d"), InputIDValue);
-		}
 	}
 	else
 	{
@@ -370,6 +352,15 @@ void ALMS_TeamProjectCharacter::HandleHealthZero(const FGameplayEffectModCallbac
 
 		}
 	}
+
+	FGameplayTagContainer CancelTags;
+	CancelTags.AddTag(FGameplayTag::RequestGameplayTag("Ability"));
+	
+	FGameplayTagContainer IgnoreTags;
+	IgnoreTags.AddTag(FGameplayTag::RequestGameplayTag("Ability.Downed"));
+
+	AbilitySystemComponent->CancelAbilities(&CancelTags, &IgnoreTags);
+
 }
 
 void ALMS_TeamProjectCharacter::HandleIncapHealthZero(const FGameplayEffectModCallbackData& Data)
@@ -394,6 +385,10 @@ void ALMS_TeamProjectCharacter::HandleIncapHealthZero(const FGameplayEffectModCa
 
 	}
 
+	FGameplayTagContainer CancelTags;
+	CancelTags.AddTag(FGameplayTag::RequestGameplayTag("Ability"));
+	AbilitySystemComponent->CancelAbilities(&CancelTags);
+
 
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
 	{
@@ -415,6 +410,7 @@ void ALMS_TeamProjectCharacter::HandleIncapHealthZero(const FGameplayEffectModCa
 
 		if (SpecPawn)
 		{
+			CachedOwnerPC = PC;
 			PC->Possess(SpecPawn);
 			UE_LOG(LogTemp, Warning, TEXT("[Spec] Possess 호출됨, 현재 폰: %s"),
 				*GetNameSafe(PC->GetPawn()));
@@ -427,7 +423,9 @@ void ALMS_TeamProjectCharacter::HandleIncapHealthZero(const FGameplayEffectModCa
 		UE_LOG(LogTemp, Warning, TEXT("[Spec] PC 캐스트 실패 - 여기가 문제"));
 	}
 
-
+	// ↓ 추가
+	bIsDead = true;
+	StartRagdoll();   // 서버는 직접, 클라는 OnRep_IsDead
 }
 
 AActor* ALMS_TeamProjectCharacter::FindFirstLivingAlly() const
@@ -459,6 +457,177 @@ AActor* ALMS_TeamProjectCharacter::FindFirstLivingAlly() const
 		return Char;
 	}
 	return nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// 죽음 → 래그돌 → 시체 정리 → 구조 부활
+
+void ALMS_TeamProjectCharacter::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(ALMS_TeamProjectCharacter, bIsDead);
+}
+
+void ALMS_TeamProjectCharacter::OnRep_IsDead()
+{
+	if (bIsDead)
+	{
+		StartRagdoll();
+	}
+	else
+	{
+		RestoreFromCorpse();
+	}
+}
+
+void ALMS_TeamProjectCharacter::StartRagdoll()
+{
+	USkeletalMeshComponent* MeshComp = GetMesh();
+	if (!MeshComp)
+	{
+		return;
+	}
+
+	// 부활 시 되돌릴 원래 상대 트랜스폼 저장
+	MeshRelativeTransform = MeshComp->GetRelativeTransform();
+
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->StopMovementImmediately();
+		MoveComp->DisableMovement();
+	}
+
+	// 캡슐 콜리전 off — AI/트레이스가 시체를 못 맞히게
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	MeshComp->SetCollisionProfileName(TEXT("Ragdoll"));
+	MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	MeshComp->bBlendPhysics = true;
+	MeshComp->SetSimulatePhysics(true);
+	MeshComp->WakeAllRigidBodies();
+
+	// 각 머신이 자기 타이머를 돌림 → 복제 신경 쓸 필요 없음
+	GetWorldTimerManager().SetTimer(
+		CorpseTimerHandle, this,
+		&ALMS_TeamProjectCharacter::FinishCorpseCleanup,
+		CorpseRagdollDuration, false);
+}
+
+void ALMS_TeamProjectCharacter::FinishCorpseCleanup()
+{
+	USkeletalMeshComponent* MeshComp = GetMesh();
+	if (!MeshComp)
+	{
+		return;
+	}
+
+	// 1) 먼저 숨김 — 이후 물리 해제 팝이 아무한테도 안 보이게
+	MeshComp->SetVisibility(false, true);
+
+	// 2) 물리 해제
+	MeshComp->SetSimulatePhysics(false);
+	MeshComp->bBlendPhysics = false;
+	MeshComp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// 3) 캡슐에 재부착 + 원래 자세 복구
+	MeshComp->AttachToComponent(
+		GetCapsuleComponent(),
+		FAttachmentTransformRules::KeepRelativeTransform);
+	MeshComp->SetRelativeTransform(MeshRelativeTransform);
+}
+
+void ALMS_TeamProjectCharacter::RestoreFromCorpse()
+{
+	// 타이머가 아직 안 돌았을 수도 있으니 먼저 취소
+	GetWorldTimerManager().ClearTimer(CorpseTimerHandle);
+
+	USkeletalMeshComponent* MeshComp = GetMesh();
+	if (!MeshComp)
+	{
+		return;
+	}
+
+	// 타이머 전에 부활했을 경우를 대비해 물리 정리를 여기서도 보장
+	MeshComp->SetSimulatePhysics(false);
+	MeshComp->bBlendPhysics = false;
+	MeshComp->SetCollisionProfileName(TEXT("CharacterMesh"));
+	MeshComp->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+
+	MeshComp->AttachToComponent(
+		GetCapsuleComponent(),
+		FAttachmentTransformRules::KeepRelativeTransform);
+	MeshComp->SetRelativeTransform(MeshRelativeTransform);
+
+	MeshComp->SetVisibility(true, true);
+
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->SetMovementMode(MOVE_Walking);
+	}
+}
+
+void ALMS_TeamProjectCharacter::RescueFromDeath(const FVector& ReviveLocation, const FRotator& ReviveRotation)
+{
+	if (!HasAuthority() || !AbilitySystemComponent || !RescuedEffect)
+	{
+		return;
+	}
+
+	static const FGameplayTag DeadTag =
+		FGameplayTag::RequestGameplayTag(FName("state.Dead"));
+
+	if (!AbilitySystemComponent->HasMatchingGameplayTag(DeadTag))
+	{
+		return;   // 죽은 상태가 아니면 무시
+	}
+
+	// 1) 컨트롤러 확보 — 언포제스로 PlayerState가 끊겼으므로 캐시 사용
+	APlayerController* PC = CachedOwnerPC;
+
+	// 2) 숨겨진 상태에서 구조물 옆으로 이동 (아직 콜리전 off)
+	SetActorLocationAndRotation(
+		ReviveLocation, ReviveRotation,
+		false, nullptr, ETeleportType::TeleportPhysics);
+
+	// 3) 시체 해제 — 서버는 직접, 클라는 OnRep_IsDead
+	bIsDead = false;
+	RestoreFromCorpse();
+
+	// 4) 재possess (PossessedBy → InitAbilityActorInfo로 Avatar 재연결)
+	APawn* SpecPawn = nullptr;
+	if (PC)
+	{
+		SpecPawn = PC->GetPawn();   // 현재는 스펙테이터 폰
+		PC->Possess(this);
+	}
+
+	// 5) GE_Rescued 적용 — possess 이후여야 InitStats에 안 덮임
+	FGameplayEffectContextHandle Context = AbilitySystemComponent->MakeEffectContext();
+	Context.AddSourceObject(this);
+
+	FGameplayEffectSpecHandle Spec =
+		AbilitySystemComponent->MakeOutgoingSpec(RescuedEffect, 1.f, Context);
+
+	if (Spec.IsValid())
+	{
+		AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*Spec.Data.Get());
+	}
+
+	// 6) IncapHealth 원복 — GE 제거가 끝난 뒤여야 Periodic과 안 다툼
+	if (AttributeSet)
+	{
+		AttributeSet->SetIncapHealth(AttributeSet->GetMaxIncapHealth());
+	}
+
+	// 7) 남은 스펙테이터 폰 정리
+	if (SpecPawn && SpecPawn != this)
+	{
+		SpecPawn->Destroy();
+	}
+	CachedOwnerPC = nullptr;
 }
 
 void ALMS_TeamProjectCharacter::CheckCoherency()
@@ -745,9 +914,8 @@ void ALMS_TeamProjectCharacter::SetupPlayerInputComponent(UInputComponent* Playe
 
 void ALMS_TeamProjectCharacter::Input_Jump()
 {
-	UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
-	if (ASC && ASC->HasMatchingGameplayTag(
-		FGameplayTag::RequestGameplayTag("State.Block.Jump")))
+	if (AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(
+		FGameplayTag::RequestGameplayTag(FName("State.Block.Jump"))))
 	{
 		return;
 	}

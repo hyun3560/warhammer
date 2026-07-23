@@ -20,6 +20,27 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnWeaponAmmoChanged, int32, AmmoIn
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnWeaponSkillCooldownChanged, float, CurrentCooldown, float, MaxCooldown);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnWeaponHUDChanged, UTexture2D*, WeaponIcon, bool, bShowAmmo);
 
+USTRUCT(BlueprintType)
+struct FReplicatedWeaponMontageState
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	TObjectPtr<UAnimMontage> Montage = nullptr;
+
+	UPROPERTY()
+	FName SectionName = NAME_None;
+
+	UPROPERTY()
+	float PlayRate = 1.f;
+
+	UPROPERTY()
+	uint8 Counter = 0;
+
+	UPROPERTY()
+	bool bStop = false;
+};
+
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class LMS_TEAMPROJECT_API ULMSWeaponComponent : public UActorComponent
 {
@@ -79,6 +100,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	bool IsAiming() const { return bIsAiming; }
 
+	UFUNCTION(BlueprintPure, Category = "Weapon|Skill")
+	float GetSkillCooldownRemaining() const;
+
+	UFUNCTION(BlueprintPure, Category = "Weapon|Skill")
+	float GetSkillCooldownDuration() const { return SkillCooldownDuration; }
+
 	UFUNCTION(BlueprintPure, Category = "Weapon|HUD")
 	UTexture2D* GetCurrentWeaponHUDIcon() const { return ResolveWeaponHUDIcon(); }
 
@@ -107,6 +134,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Ranged")
 	void FireRangedShot(float DamageMultiplier, float RangeMultiplier, bool bDrawDebugTrace);
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Animation")
+	void PlayReplicatedThirdPersonWeaponMontage(UAnimMontage* Montage, FName SectionName = NAME_None, float PlayRate = 1.f);
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Animation")
+	void StopReplicatedThirdPersonWeaponMontage(UAnimMontage* Montage, float BlendOutTime = 0.15f);
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Trace")
 	void BeginWeaponTrace(FName StartSocketName, FName EndSocketName, float TraceRadius, float DamageMultiplier, bool bDrawDebugTrace);
@@ -193,6 +226,7 @@ protected:
 	void BroadcastWeaponHUDChanged();
 	void UpdateSkillCooldown();
 	void BroadcastSkillCooldownChanged(float CurrentCooldown, float MaxCooldown);
+	float ResolveCurrentWeaponSkillCooldownDuration() const;
 	void CacheWeaponDataByID(FName WeaponID);
 	UTexture2D* ResolveWeaponHUDIcon() const;
 	bool ShouldShowAmmoOnHUD() const;
@@ -200,7 +234,13 @@ protected:
 	ALMSWeaponBase* GetWeaponTraceActor() const;
 	bool GetWeaponTraceSocketLocations(FVector& OutStart, FVector& OutEnd) const;
 	void TraceWeaponSegment(const FVector& PreviousPoint, const FVector& CurrentPoint, FCollisionQueryParams& QueryParams);
-	void HandleWeaponTraceHit(const FHitResult& Hit);
+	void HandleWeaponTraceHit(const FHitResult& Hit, const FVector& TraceStart, const FVector& TraceEnd);
+	float ConsumeWeaponTraceDamageMultiplier(float DamageMultiplier);
+	bool IsValidClientWeaponTraceHit(AActor* HitActor, const FVector& TraceStart, const FVector& TraceEnd) const;
+	void PlayThirdPersonWeaponMontageLocal(UAnimMontage* Montage, FName SectionName, float PlayRate);
+	void StopThirdPersonWeaponMontageLocal(UAnimMontage* Montage, float BlendOutTime);
+	void ReplicateThirdPersonWeaponMontage(UAnimMontage* Montage, FName SectionName, float PlayRate = 1.f);
+	void ReplicateStopThirdPersonWeaponMontage(UAnimMontage* Montage);
 	bool HandleMeleeComboInputInternal(
 		UAnimInstance* PrimaryAnimInstance,
 		UAnimMontage* PrimaryComboMontage,
@@ -221,6 +261,24 @@ protected:
 
 	UFUNCTION()
 	void OnRep_SkillCooldown();
+
+	UFUNCTION()
+	void OnRep_WeaponMontageState();
+
+	UFUNCTION(Server, Reliable)
+	void ServerPlayThirdPersonWeaponMontage(UAnimMontage* Montage, FName SectionName, float PlayRate);
+
+	UFUNCTION(Server, Reliable)
+	void ServerStopThirdPersonWeaponMontage(UAnimMontage* Montage);
+
+	UFUNCTION(Server, Reliable)
+	void ServerBeginFirstPersonWeaponTrace(float TraceRadius, float DamageMultiplier);
+
+	UFUNCTION(Server, Reliable)
+	void ServerApplyFirstPersonWeaponTraceHit(AActor* HitActor, FVector TraceStart, FVector TraceEnd);
+
+	UFUNCTION(Server, Reliable)
+	void ServerEndFirstPersonWeaponTrace();
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	UDataTable* WeaponDataTable;
@@ -254,6 +312,12 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Trace", meta = (ClampMin = "2", ClampMax = "16"))
 	int32 WeaponTraceSampleCount = 5;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Trace")
+	float ClientTraceValidationMaxDistance = 500.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Trace")
+	float ClientTraceValidationTolerance = 180.f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Aim")
 	float AimFOV = 65.f;
@@ -321,10 +385,15 @@ protected:
 
 	UPROPERTY(ReplicatedUsing = OnRep_SkillCooldown)
 	float SkillCooldownDuration = 0.f;
+
+	UPROPERTY(ReplicatedUsing = OnRep_WeaponMontageState)
+	FReplicatedWeaponMontageState WeaponMontageState;
+
 	float MeleeDamageBoostMultiplier = 1.f;
 	int32 RemainingBoostedWeaponTraces = 0;
 
 	bool bIsWeaponTracing = false;
+	bool bAcceptClientWeaponTraceHits = false;
 	bool bDrawDebugWeaponTrace = false;
 	float ActiveWeaponTraceRadius = 12.f;
 	float ActiveWeaponTraceDamageMultiplier = 1.f;
