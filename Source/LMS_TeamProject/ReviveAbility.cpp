@@ -169,6 +169,16 @@ void UReviveAbility::StartRevive(AActor* Target)
 		UAbilityTask_WaitReviveHold::WaitReviveHold(
 			this, ReviveTarget, ReviveDuration, MaxReviveDistance, 0.1f);
 
+	// revive 전용 유지 조건 — 대상이 계속 다운 상태여야 함
+	TWeakObjectPtr<AActor> WeakTarget = ReviveTarget;
+	Task->SetExtraCondition([WeakTarget]() -> bool
+		{
+			UAbilitySystemComponent* TargetASC =
+				UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(WeakTarget.Get());
+			return TargetASC && TargetASC->HasMatchingGameplayTag(
+				FGameplayTag::RequestGameplayTag("state.Incapacitated"));
+		});
+
 	Task->OnCompleted.AddDynamic(this, &UReviveAbility::OnReviveCompleted);
 	Task->OnCancelled.AddDynamic(this, &UReviveAbility::OnReviveCancelled);
 	Task->OnProgress.AddDynamic(this, &UReviveAbility::HandleReviveProgress);
@@ -181,7 +191,6 @@ void UReviveAbility::StartRevive(AActor* Target)
 		CombatHUDPresenter->SetInteractionProgressValue(0.f);
 	}
 }
-
 // ─────────────────────────────────────────────────────────────
 // 서버 검증 : 거리 + 다운 상태 태그
 // ─────────────────────────────────────────────────────────────

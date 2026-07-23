@@ -6,6 +6,7 @@
 #include "RescueAllAbility.generated.h"
 
 class ALMSRescueStation;
+class ULMSCombatHUDPresenterComponent;
 
 UCLASS()
 class LMS_TEAMPROJECT_API URescueAllAbility : public ULMSGameplayAbility
@@ -20,6 +21,11 @@ public:
 		const FGameplayAbilityActorInfo* ActorInfo,
 		const FGameplayAbilityActivationInfo ActivationInfo,
 		const FGameplayEventData* TriggerEventData) override;
+
+	virtual void InputReleased(
+		const FGameplayAbilitySpecHandle Handle,
+		const FGameplayAbilityActorInfo* ActorInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo) override;
 
 	virtual void EndAbility(
 		const FGameplayAbilitySpecHandle Handle,
@@ -44,17 +50,22 @@ protected:
 	UPROPERTY()
 	TObjectPtr<ALMSRescueStation> TargetStation;
 
-	float ElapsedHold = 0.f;
-	FTimerHandle HoldTimerHandle;
-
 	/** 서버: 클라가 보낸 TargetData 수신 */
 	void OnTargetDataReceived(const FGameplayAbilityTargetDataHandle& Data, FGameplayTag Tag);
 
+	/** 클라/서버 공통 — 홀드 태스크 시작 */
 	void StartHold();
-	void TickHold();
 
 	UFUNCTION()
-	void OnInputReleased(float TimeHeld);
+	void OnHoldCompleted();
+
+	UFUNCTION()
+	void OnHoldCancelled();
+
+	UFUNCTION()
+	void HandleHoldProgress(float Progress);
+
+	ULMSCombatHUDPresenterComponent* GetCombatHUDPresenter() const;
 
 	FDelegateHandle TargetDataDelegateHandle;
 };
