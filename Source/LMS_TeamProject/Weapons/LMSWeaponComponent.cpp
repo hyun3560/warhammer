@@ -1020,10 +1020,22 @@ void ULMSWeaponComponent::FireRifleProjectile(float DamageMultiplier)
 		return;
 	}
 
-	const FTransform AttackOrigin = CurrentWeapon ? CurrentWeapon->GetAttackOriginTransform() : FTransform::Identity;
-	const FVector SpawnLocation = CurrentWeapon ? AttackOrigin.GetLocation() : OwnerCharacter->GetPawnViewLocation();
 	const FRotator AimRotation = OwnerCharacter->GetControlRotation();
 	const FVector Direction = AimRotation.Vector();
+
+	// 무기 메시에 Muzzle 소켓이 있으면 그 위치에서, 없으면 시점 위치에서 발사한다.
+	// (GetAttackOriginTransform은 소켓이 없을 때 무기 액터 원점=발밑을 반환하므로 소켓 존재 여부를 직접 확인)
+	FVector SpawnLocation = OwnerCharacter->GetPawnViewLocation();
+	if (ALMSWeaponBase* MuzzleWeapon = FirstPersonWeapon ? FirstPersonWeapon : CurrentWeapon)
+	{
+		if (USkeletalMeshComponent* WeaponMesh = MuzzleWeapon->GetWeaponMesh())
+		{
+			if (WeaponMesh->DoesSocketExist(TEXT("Muzzle")))
+			{
+				SpawnLocation = WeaponMesh->GetSocketLocation(TEXT("Muzzle"));
+			}
+		}
+	}
 
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.Owner = OwnerCharacter;
@@ -1059,6 +1071,61 @@ void ULMSWeaponComponent::FireRifleProjectile(float DamageMultiplier)
 	const float ShotDamage = CurrentWeaponData.Damage * DamageMultiplier;
 	Projectile->InitializeProjectile(CurrentWeaponData.ProjectileRadius, ShotDamage, CurrentWeaponData.ProjectileSpeed, CurrentWeaponData.ProjectileSpeed);
 	Projectile->LaunchStraight(Direction, CurrentWeaponData.ProjectileSpeed);
+}
+
+void ULMSWeaponComponent::PlayThirdPersonMontage(UAnimMontage* Montage, float PlayRate)
+{
+	if (!Montage)
+	{
+		return;
+	}
+
+	AActor* OwnerActor = GetOwner();
+	if (!OwnerActor)
+	{
+		return;
+	}
+
+	// 서버면 바로 멀티캐스트, 클라이언트면 서버로 요청 → 서버가 멀티캐스트한다.
+	if (OwnerActor->HasAuthority())
+	{
+		Multicast_PlayThirdPersonMontage(Montage, PlayRate);
+	}
+	else
+	{
+		Server_PlayThirdPersonMontage(Montage, PlayRate);
+	}
+}
+
+void ULMSWeaponComponent::Server_PlayThirdPersonMontage_Implementation(UAnimMontage* Montage, float PlayRate)
+{
+	Multicast_PlayThirdPersonMontage(Montage, PlayRate);
+}
+
+void ULMSWeaponComponent::Multicast_PlayThirdPersonMontage_Implementation(UAnimMontage* Montage, float PlayRate)
+{
+	PlayThirdPersonMontageLocal(Montage, PlayRate);
+}
+
+void ULMSWeaponComponent::PlayThirdPersonMontageLocal(UAnimMontage* Montage, float PlayRate)
+{
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (!OwnerCharacter || !Montage)
+	{
+		return;
+	}
+
+	// 3인칭 몸(캐릭터 메인 Mesh)의 AnimInstance에 재생한다.
+	USkeletalMeshComponent* BodyMesh = OwnerCharacter->GetMesh();
+	if (!BodyMesh)
+	{
+		return;
+	}
+
+	if (UAnimInstance* AnimInstance = BodyMesh->GetAnimInstance())
+	{
+		AnimInstance->Montage_Play(Montage, PlayRate);
+	}
 }
 
 void ULMSWeaponComponent::StartComboAttack(int32 StartingComboIndex)

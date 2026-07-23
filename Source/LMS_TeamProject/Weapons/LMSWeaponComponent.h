@@ -112,6 +112,22 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Ranged")
 	void FireRifleProjectile(float DamageMultiplier);
 
+	// 소유 클라이언트에서 호출 → 서버 경유 → 모든 클라이언트의 3인칭 몸(메인 Mesh)에 몽타주 재생.
+	// (1인칭 팔 몽타주는 로컬에서 별도로 재생한다.)
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Anim")
+	void PlayThirdPersonMontage(UAnimMontage* Montage, float PlayRate = 1.f);
+
+protected:
+	UFUNCTION(Server, Reliable)
+	void Server_PlayThirdPersonMontage(UAnimMontage* Montage, float PlayRate);
+
+	UFUNCTION(NetMulticast, Reliable)
+	void Multicast_PlayThirdPersonMontage(UAnimMontage* Montage, float PlayRate);
+
+	void PlayThirdPersonMontageLocal(UAnimMontage* Montage, float PlayRate);
+
+public:
+
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Trace")
 	void BeginWeaponTrace(FName StartSocketName, FName EndSocketName, float TraceRadius, float DamageMultiplier, bool bDrawDebugTrace);
 
