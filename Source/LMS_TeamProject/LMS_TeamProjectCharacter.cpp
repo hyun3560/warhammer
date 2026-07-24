@@ -14,6 +14,8 @@
 #include "LMSAttributeSet.h"
 #include "LMS_TeamProjectPlayerState.h"
 #include "LMSGameplayAbility.h"
+#include "LMSInteractableInterface.h"
+#include "InteractionDetectorComponent.h"
 #include "GameplayEffect.h"
 #include "Weapons/LMSWeaponComponent.h"
 #include "PingMarker.h"
@@ -63,6 +65,9 @@ ALMS_TeamProjectCharacter::ALMS_TeamProjectCharacter()
 	FollowCamera->bUsePawnControlRotation = false; // Camera does not rotate relative to arm
 
 	WeaponComponent = CreateDefaultSubobject<ULMSWeaponComponent>(TEXT("WeaponComponent"));
+
+	InteractionDetector = CreateDefaultSubobject<UInteractionDetectorComponent>(TEXT("InteractionDetector"));
+	InteractionDetector->SetupAttachment(RootComponent);
 
 	// Note: The skeletal mesh and anim blueprint references on the Mesh component (inherited from Character)
 	// are set in the derived blueprint asset named ThirdPersonCharacter (to avoid direct content references in C++)
@@ -221,6 +226,25 @@ void ALMS_TeamProjectCharacter::OnSpeedChanged(const FOnAttributeChangeData& Dat
 
 void ALMS_TeamProjectCharacter::OnAbilityInputPressed(ELMSAbilityInputID InputID)
 {
+	// Interact로 들어오면 감지된 대상에게 물어 실제 InputID로 치환
+	if (InputID == ELMSAbilityInputID::Interact)
+	{
+		AActor* Target = InteractionDetector ? InteractionDetector->GetCurrentTarget() : nullptr;
+		if (!Target || !Target->Implements<ULMSInteractableInterface>())
+		{
+			return;
+		}
+		if (!ILMSInteractableInterface::Execute_CanInteract(Target, this))
+		{
+			return;
+		}
+
+		InputID = static_cast<ELMSAbilityInputID>(
+			ILMSInteractableInterface::Execute_GetInteractInputID(Target));
+
+		CachedInteractInputID = InputID;   // Released 때 라우팅에 사용
+	}
+
 	UE_LOG(LogTemplateCharacter, Log, TEXT("Ability input pressed: %d"), static_cast<int32>(InputID));
 
 	if (AbilitySystemComponent)
@@ -236,6 +260,17 @@ void ALMS_TeamProjectCharacter::OnAbilityInputPressed(ELMSAbilityInputID InputID
 
 void ALMS_TeamProjectCharacter::OnAbilityInputReleased(ELMSAbilityInputID InputID)
 {
+	// Interact로 들어오면 Pressed 때 켠 실제 InputID로 치환
+	if (InputID == ELMSAbilityInputID::Interact)
+	{
+		if (CachedInteractInputID == ELMSAbilityInputID::None)
+		{
+			return;   // 애초에 활성화 안 됐음
+		}
+		InputID = CachedInteractInputID;
+		CachedInteractInputID = ELMSAbilityInputID::None;
+	}
+
 	UE_LOG(LogTemplateCharacter, Log, TEXT("Ability input released: %d"), static_cast<int32>(InputID));
 
 	if (AbilitySystemComponent)
@@ -504,12 +539,13 @@ void ALMS_TeamProjectCharacter::BeginPlay()
 		}
 	}
 
-	GetWorldTimerManager().SetTimer(
-		ReviveTraceTimerHandle, this,
-		&ALMS_TeamProjectCharacter::TraceForReviveTarget,
-		0.15f, true);
-
-	
+	// 부활 대상 감지는 InteractionDetector 컴포넌트가 담당.
+	// 대상 변경 시 HUD 프롬프트를 갱신하도록 델리게이트 바인딩(로컬 컨트롤 한정 — 컴포넌트가 로컬에서만 감지).
+	if (InteractionDetector)
+	{
+		InteractionDetector->OnTargetChanged.AddDynamic(
+			this, &ALMS_TeamProjectCharacter::OnInteractTargetChanged);
+	}
 }
 
 void ALMS_TeamProjectCharacter::EndPlay(const EEndPlayReason::Type EndPlayReason)
