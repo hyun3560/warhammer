@@ -19,7 +19,9 @@ enum class ELMSAbilityInputID : uint8
 	WeaponSkill UMETA(DisplayName = "WeaponSkill"),
 	PrimaryAttack UMETA(DisplayName = "FirePrimary"),   // ← 이렇게 추가
 	SecondaryAttack UMETA(DisplayName = "FireSecondary"), // 필요하면 보조사격도
-	Reload      UMETA(DisplayName = "Reload")
+	Reload      UMETA(DisplayName = "Reload"),
+	Interact_Revive UMETA(DisplayName = "Interact_Revive"),
+	Interact_RescueAll UMETA(DisplayName = "Interact_RescueAll")
 };
 
 /**

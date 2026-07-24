@@ -33,6 +33,12 @@ protected:
 		bool bReplicateEndAbility,
 		bool bWasCancelled) override;
 
+	bool IsServerSideNonLocalAvatar(const FGameplayAbilityActorInfo* ActorInfo) const;
+	void DestroyServerSideNonLocalBlockShieldEffect(const FGameplayAbilityActorInfo* ActorInfo);
+	void PlayServerSideNonLocalShieldEndMontage(ULMSWeaponComponent* WeaponComponent);
+
+	bool bDestroyedServerSideNonLocalBlockShieldEffect = false;
+
 	UFUNCTION(BlueprintImplementableEvent, Category = "Weapon|Ability")
 	void OnSecondaryStarted(ULMSWeaponComponent* WeaponComponent);
 

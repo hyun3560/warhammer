@@ -3,6 +3,8 @@
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemBlueprintLibrary.h"
 #include "GameplayPrediction.h"
+#include "InteractionDetectorComponent.h"
+
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 
@@ -34,7 +36,7 @@ void UReviveAbility::ActivateAbility(
 		// 캐릭터가 트레이스로 잡아둔 대상 꺼내기
 		ALMS_TeamProjectCharacter* Char =
 			Cast<ALMS_TeamProjectCharacter>(ActorInfo->AvatarActor.Get());
-		AActor* Target = Char ? Char->GetCurrentReviveTarget() : nullptr;
+		AActor* Target = Char ? Char->GetInteractionDetector()->GetCurrentTarget() : nullptr;
 
 		if (!Target)
 		{
@@ -85,6 +87,11 @@ void UReviveAbility::OnTargetDataReceived(
 {
 	UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
 
+	if (!ASC)
+	{
+		return;
+	}
+
 	// RPC 버퍼 비우기 (다음 활성화 시 묵은 데이터 재사용 방지)
 	ASC->ConsumeClientReplicatedTargetData(
 		CurrentSpecHandle, CurrentActivationInfo.GetActivationPredictionKey());
@@ -118,43 +125,72 @@ void UReviveAbility::StartRevive(AActor* Target)
 {
 	ReviveTarget = Target;
 
+	// 서버 권위: 시전자 이동 봉인(Reviving) + 대상 BleedOut 정지(BeingRevived)
+	if (K2_HasAuthority())
+	{
+		if (UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo())
+		{
+			// [1] 시전자 자신 — Speed Override 0 (홀드 중 이동 봉인)
+			if (RevivingEffect)
+			{
+				FGameplayEffectContextHandle Context = ASC->MakeEffectContext();
+				Context.AddSourceObject(this);
+
+				FGameplayEffectSpecHandle Spec =
+					ASC->MakeOutgoingSpec(RevivingEffect, 1.f, Context);
+				if (Spec.IsValid())
+				{
+					RevivingHandle = ASC->ApplyGameplayEffectSpecToSelf(*Spec.Data.Get());
+				}
+			}
+
+			// [2] 대상 — state.BeingRevived 부여 (BleedOut Ongoing 조건 위반 → 출혈 정지)
+			UAbilitySystemComponent* TargetASC =
+				UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ReviveTarget);
+
+			if (BeingRevivedEffect && TargetASC)
+			{
+				FGameplayEffectContextHandle Context = ASC->MakeEffectContext();
+				Context.AddSourceObject(this);
+
+				FGameplayEffectSpecHandle Spec =
+					ASC->MakeOutgoingSpec(BeingRevivedEffect, 1.f, Context);
+				if (Spec.IsValid())
+				{
+					BeingRevivedHandle =
+						ASC->ApplyGameplayEffectSpecToTarget(*Spec.Data.Get(), TargetASC);
+				}
+			}
+		}
+	}
+
 	// 홀드 태스크 (클라 = 게이지 예측 / 서버 = 실제 완료 판정)
 	UAbilityTask_WaitReviveHold* Task =
 		UAbilityTask_WaitReviveHold::WaitReviveHold(
 			this, ReviveTarget, ReviveDuration, MaxReviveDistance, 0.1f);
+
+	// revive 전용 유지 조건 — 대상이 계속 다운 상태여야 함
+	TWeakObjectPtr<AActor> WeakTarget = ReviveTarget;
+	Task->SetExtraCondition([WeakTarget]() -> bool
+		{
+			UAbilitySystemComponent* TargetASC =
+				UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(WeakTarget.Get());
+			return TargetASC && TargetASC->HasMatchingGameplayTag(
+				FGameplayTag::RequestGameplayTag("state.Incapacitated"));
+		});
+
 	Task->OnCompleted.AddDynamic(this, &UReviveAbility::OnReviveCompleted);
 	Task->OnCancelled.AddDynamic(this, &UReviveAbility::OnReviveCancelled);
 	Task->OnProgress.AddDynamic(this, &UReviveAbility::HandleReviveProgress);
 	Task->ReadyForActivation();
 
+	// 로컬 시전자 화면에 부활 게이지 표시
 	if (ULMSCombatHUDPresenterComponent* CombatHUDPresenter = GetCombatHUDPresenter())
 	{
 		CombatHUDPresenter->ShowInteractionProgress();
 		CombatHUDPresenter->SetInteractionProgressValue(0.f);
 	}
-
-	// BeingRevived 부여 → 홀드 중 BleedOut 정지 (서버만, 결과성 GE)
-	if (K2_HasAuthority() && BeingRevivedEffect)
-	{
-		UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
-		UAbilitySystemComponent* TargetASC =
-			UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ReviveTarget);
-		if (TargetASC)
-		{
-			FGameplayEffectContextHandle Context = ASC->MakeEffectContext();
-			Context.AddSourceObject(this);
-
-			FGameplayEffectSpecHandle Spec =
-				ASC->MakeOutgoingSpec(BeingRevivedEffect, 1.f, Context);
-			if (Spec.IsValid())
-			{
-				BeingRevivedHandle =
-					ASC->ApplyGameplayEffectSpecToTarget(*Spec.Data.Get(), TargetASC);
-			}
-		}
-	}
 }
-
 // ─────────────────────────────────────────────────────────────
 // 서버 검증 : 거리 + 다운 상태 태그
 // ─────────────────────────────────────────────────────────────
@@ -171,18 +207,24 @@ bool UReviveAbility::ValidateTarget(AActor* Target) const
 		return false;
 	}
 
-	// 거리
-	if (FVector::Dist(Rescuer->GetActorLocation(),
-		Target->GetActorLocation()) > MaxReviveDistance)
+	// 거리 — 서버만 아는 권위 검증
+	if (FVector::Dist(Rescuer->GetActorLocation(), Target->GetActorLocation()) > MaxReviveDistance)
 	{
 		return false;
 	}
 
-	// 아직 다운 상태(state.Incapacitated)인가
-	UAbilitySystemComponent* TargetASC =
-		UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target);
-	if (!TargetASC || !TargetASC->HasMatchingGameplayTag(
-		FGameplayTag::RequestGameplayTag("state.Incapacitated")))
+	// 인터랙터블인가 + 상호작용 가능한 상태인가
+	if (!Target->Implements<ULMSInteractableInterface>())
+	{
+		return false;
+	}
+	if (!ILMSInteractableInterface::Execute_CanInteract(Target, Rescuer))
+	{
+		return false;
+	}
+
+	//시야 헬퍼 함수 
+	if (!UInteractionDetectorComponent::HasLineOfSight(GetWorld(), Rescuer, Target))
 	{
 		return false;
 	}
@@ -226,6 +268,9 @@ void UReviveAbility::OnReviveCancelled()
 	EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, true);
 }
 
+// ─────────────────────────────────────────────────────────────
+// 홀드 진행률 → 로컬 시전자 HUD 게이지 (0~1)
+// ─────────────────────────────────────────────────────────────
 void UReviveAbility::HandleReviveProgress(float Progress)
 {
 	if (ULMSCombatHUDPresenterComponent* CombatHUDPresenter = GetCombatHUDPresenter())
@@ -235,6 +280,9 @@ void UReviveAbility::HandleReviveProgress(float Progress)
 	}
 }
 
+// ─────────────────────────────────────────────────────────────
+// 로컬 시전자의 HUD Presenter 얻기 (AvatarActor의 로컬 컨트롤러 경유)
+// ─────────────────────────────────────────────────────────────
 ULMSCombatHUDPresenterComponent* UReviveAbility::GetCombatHUDPresenter() const
 {
 	APawn* Pawn = Cast<APawn>(GetAvatarActorFromActorInfo());
@@ -271,15 +319,17 @@ void UReviveAbility::EndAbility(
 	bool bReplicateEndAbility,
 	bool bWasCancelled)
 {
+	// 로컬 시전자 게이지 숨김 (완료/취소/중단 모두)
 	if (ULMSCombatHUDPresenterComponent* CombatHUDPresenter = GetCombatHUDPresenter())
 	{
 		CombatHUDPresenter->HideInteractionProgress();
 	}
 
+	UAbilitySystemComponent* ASC = ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr;
 	// 서버가 등록한 TargetData 수신 델리게이트 해제 (재활성화 시 중복 바인딩 방지)
 	if (TargetDataDelegateHandle.IsValid())
 	{
-		if (UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo())
+		if (ASC)
 		{
 			ASC->AbilityTargetDataSetDelegate(
 				CurrentSpecHandle, CurrentActivationInfo.GetActivationPredictionKey())
@@ -288,16 +338,26 @@ void UReviveAbility::EndAbility(
 		TargetDataDelegateHandle.Reset();
 	}
 
-	// 홀드 중 붙였던 BeingRevived 제거 (취소든 완료든 반드시 정리 — 안 하면 BleedOut 영구 정지)
-	if (HasAuthority(&ActivationInfo) && BeingRevivedHandle.IsValid())
+	// 홀드 중 붙였던 GE 정리 (취소든 완료든 반드시)
+	if (HasAuthority(&ActivationInfo))
 	{
-		if (UAbilitySystemComponent* TargetASC =
-			UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ReviveTarget))
+		// [1] 시전자 이동 봉인 해제 — 자기 ASC
+		if (ASC && RevivingHandle.IsValid())
 		{
-			TargetASC->RemoveActiveGameplayEffect(BeingRevivedHandle);
+			ASC->RemoveActiveGameplayEffect(RevivingHandle);
+			RevivingHandle = FActiveGameplayEffectHandle();
 		}
-		BeingRevivedHandle = FActiveGameplayEffectHandle();
-	}
 
+		// [2] 대상 BeingRevived 해제 — 대상 ASC (안 하면 BleedOut 영구 정지)
+		if (BeingRevivedHandle.IsValid())
+		{
+			if (UAbilitySystemComponent* TargetASC =
+				UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(ReviveTarget))
+			{
+				TargetASC->RemoveActiveGameplayEffect(BeingRevivedHandle);
+			}
+			BeingRevivedHandle = FActiveGameplayEffectHandle();
+		}
+	}
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }

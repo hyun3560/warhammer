@@ -74,7 +74,8 @@ public:
 		float CurrentHealth,
 		float MaxHealth,
 		float CurrentShield,
-		float MaxShield
+		float MaxShield,
+		bool bIsGroggy
 	);
 
 	// 지정한 팀원 슬롯을 보이거나 숨기도록 HUD 블루프린트에 전달합니다.

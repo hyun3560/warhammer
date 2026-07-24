@@ -1,5 +1,7 @@
 #include "LMSTeamStatusComponent.h"
 
+#include "AbilitySystemComponent.h"
+#include "GameplayTagContainer.h"
 #include "GameFramework/GameStateBase.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
@@ -96,16 +98,35 @@ void ULMSTeamStatusComponent::RefreshTeamStatus()
 			continue;
 		}
 
+		const UAbilitySystemComponent* TeamAbilitySystemComponent =
+			TeamPlayerState->GetAbilitySystemComponent();
+
+		static const FGameplayTag IncapacitatedTag =
+			FGameplayTag::RequestGameplayTag(TEXT("state.Incapacitated"));
+
+		const bool bIsGroggy =
+			TeamAbilitySystemComponent &&
+			TeamAbilitySystemComponent->HasMatchingGameplayTag(IncapacitatedTag);
+
+		const float DisplayHealth = bIsGroggy
+			? TeamAttributeSet->GetIncapHealth()
+			: TeamAttributeSet->GetHealth();
+
+		const float DisplayMaxHealth = bIsGroggy
+			? TeamAttributeSet->GetMaxIncapHealth()
+			: TeamAttributeSet->GetMaxHealth();
+
 		CombatHUDPresenterComponent->ShowTeamMemberStatus(
 			SlotIndex,
 			FText::Format(
 				FText::FromString(TEXT("Player {0}")),
 				FText::AsNumber(SlotIndex + 1)
 			),
-			TeamAttributeSet->GetHealth(),
-			TeamAttributeSet->GetMaxHealth(),
+			DisplayHealth,
+			DisplayMaxHealth,
 			TeamAttributeSet->GetShield(),
-			TeamAttributeSet->GetMaxShield()
+			TeamAttributeSet->GetMaxShield(),
+			bIsGroggy
 		);
 		++SlotIndex;
 		if (SlotIndex >= MaxTeamMemberSlots)

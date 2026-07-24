@@ -6,6 +6,7 @@
 #include "Engine/World.h"
 #include "TimerManager.h"
 #include "Math/UnrealMathUtility.h"
+#include "Components/CapsuleComponent.h"
 
 AMonsterSpawner::AMonsterSpawner()
 {
@@ -77,7 +78,18 @@ void AMonsterSpawner::SpawnOneMonster()
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 	SpawnParams.Owner = this;
 
-	ABaseEnemyCharacter* NewMonster = GetWorld()->SpawnActor<ABaseEnemyCharacter>(MonsterClass, FindSpawnLocation(), GetActorRotation(), SpawnParams);
+	FVector SpawnLocation = FindSpawnLocation();
+	if (const ABaseEnemyCharacter* MonsterCDO = MonsterClass->GetDefaultObject<ABaseEnemyCharacter>())
+	{
+		if (const UCapsuleComponent* Capsule = MonsterCDO->GetCapsuleComponent())
+		{
+			// FindSpawnLocation()은 바닥 표면 좌표를 반환하는데, 캐릭터의 액터 위치는 캡슐 중심이라
+			// 그대로 스폰하면 캡슐 절반이 바닥 아래로 파묻힌다.
+			SpawnLocation.Z += Capsule->GetScaledCapsuleHalfHeight();
+		}
+	}
+
+	ABaseEnemyCharacter* NewMonster = GetWorld()->SpawnActor<ABaseEnemyCharacter>(MonsterClass, SpawnLocation, GetActorRotation(), SpawnParams);
 	if (NewMonster)
 	{
 		AliveMonsters.Add(NewMonster);

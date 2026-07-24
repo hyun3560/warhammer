@@ -83,6 +83,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Revive")
 	TSubclassOf<UGameplayEffect> ReviveEffect;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Revive")
+	TSubclassOf<UGameplayEffect> RevivingEffect;   // Speed Override 0
+
 	// 홀드 중 대상에게 붙일 GE (state.BeingRevived 부여 → BleedOut 정지)
 	UPROPERTY(EditDefaultsOnly, Category = "Revive")
 	TSubclassOf<UGameplayEffect> BeingRevivedEffect;
@@ -91,6 +94,8 @@ private:
 	// 현재 부활 대상 (PerActor 인스턴스라 재활성화 시 ActivateAbility에서 초기화)
 	UPROPERTY()
 	TObjectPtr<AActor> ReviveTarget = nullptr;
+
+	FActiveGameplayEffectHandle RevivingHandle;
 
 	// BeingRevived 적용 핸들 (EndAbility에서 제거하기 위해 보관)
 	FActiveGameplayEffectHandle BeingRevivedHandle;

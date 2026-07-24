@@ -61,6 +61,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	void UnequipCurrentWeapon();
 
+	UFUNCTION(BlueprintCallable, Category = "Weapon|First Person")
+	void SetLocalFirstPersonWeaponViewEnabled(bool bEnabled);
+
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	void StartAttack();
 
@@ -213,6 +216,7 @@ protected:
 	ALMSWeaponBase* SpawnWeaponActor(const FWeaponData& WeaponData, TSubclassOf<ALMSWeaponBase> OverrideWeaponClass = nullptr) const;
 	USceneComponent* FindFirstPersonWeaponAttachComponent() const;
 	void RefreshFirstPersonWeaponVisual();
+	void ApplyLocalWeaponViewVisibility();
 	void StartMeleeAttack();
 	void StartRangedAttack();
 	void StartBlock();
@@ -395,6 +399,7 @@ protected:
 	bool bIsWeaponTracing = false;
 	bool bAcceptClientWeaponTraceHits = false;
 	bool bDrawDebugWeaponTrace = false;
+	bool bUseLocalFirstPersonWeaponView = true;
 	float ActiveWeaponTraceRadius = 12.f;
 	float ActiveWeaponTraceDamageMultiplier = 1.f;
 	FName ActiveTraceStartSocketName = NAME_None;

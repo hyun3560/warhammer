@@ -429,7 +429,9 @@ void ULMSCombatHUDPresenterComponent::ShowTeamMemberStatus(
 	float CurrentHealth,
 	float MaxHealth,
 	float CurrentShield,
-	float MaxShield) const
+	float MaxShield,
+	bool bIsGroggy
+	) const
 {
 	// 현재 WBP_CombatHUD에는 팀원 슬롯이 0, 1, 2번까지만 준비되어 있습니다.
 	// 잘못된 인덱스가 들어오면 BP까지 넘기지 않고 여기서 막습니다.
@@ -445,7 +447,8 @@ void ULMSCombatHUDPresenterComponent::ShowTeamMemberStatus(
 		CurrentHealth,
 		MaxHealth,
 		CurrentShield,
-		MaxShield
+		MaxShield,
+		bIsGroggy
 	);
 
 	// 값 갱신 후 해당 팀원 슬롯을 보이게 만듭니다.
@@ -513,7 +516,9 @@ void ULMSCombatHUDPresenterComponent::UpdateTeamMemberStatus(
 	float CurrentHealth,
 	float MaxHealth,
 	float CurrentShield,
-	float MaxShield) const
+	float MaxShield,
+	bool bIsGroggy
+	) const
 {
 	if (!CombatHUDWidget)
 	{
@@ -526,7 +531,8 @@ void ULMSCombatHUDPresenterComponent::UpdateTeamMemberStatus(
 		CurrentHealth,
 		MaxHealth,
 		CurrentShield,
-		MaxShield
+		MaxShield,
+		bIsGroggy
 	);
 }
 

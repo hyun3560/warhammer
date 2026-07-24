@@ -74,13 +74,13 @@ Plugins/**/Intermediate/*
 # Cache files for the editor to use
 DerivedDataCache/*
 
-# Local-only large asset packs
-Content/Scifi_desert_city/
-Content/Sci_FI_Valley_Village/
-Content/ParagonIggyScorch/
-Content/ParagonGrux/
-Content/ParagonGRIMexe/
-Content/Resources/
-Content/Resource/
-Content/ParagonKwang/
-Content/ParagonSevarog/
+# Unreal assets are local-only for now.
+# Commit selected assets later with `git add -f <path>` if needed.
+Content/
+*.uasset
+*.umap
+*.ubulk
+*.uexp
+*.uptnl
+*_BuiltData.uasset
+_LocalOnly/

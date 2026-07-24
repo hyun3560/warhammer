@@ -12,6 +12,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
+#include "AIController.h"
+#include "BrainComponent.h"
 
 ABaseEnemyCharacter::ABaseEnemyCharacter()
 {
@@ -77,6 +79,13 @@ void ABaseEnemyCharacter::PossessedBy(AController* NewController)
 		// OnHealthZero는 PostGameplayEffectExecute(서버)에서만 브로드캐스트됩니다.
 		if (HasAuthority() && AttributeSet)
 		{
+			const FEnemyTableRow* Data = GetEnemyData();
+			if (Data)
+			{
+				AttributeSet->SetMaxHealth(Data->MaxHP);
+				AttributeSet->SetHealth(Data->MaxHP);
+			}
+
 			AttributeSet->OnHealthZero.RemoveAll(this);
 			AttributeSet->OnHealthZero.AddUObject(this, &ABaseEnemyCharacter::HandleHealthZero);
 		}
@@ -120,6 +129,44 @@ void ABaseEnemyCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInput
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
 }
 
+float ABaseEnemyCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
+{
+	const float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+
+	if (!HasAuthority() || !AbilitySystemComponent || ActualDamage <= 0.f)
+	{
+		return ActualDamage;
+	}
+
+	AbilitySystemComponent->ApplyModToAttribute(
+		ULMSAttributeSet::GetHealthAttribute(),
+		EGameplayModOp::Additive,
+		-ActualDamage);
+
+	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponent())
+	{
+		static const FGameplayTag HitTag = FGameplayTag::RequestGameplayTag(FName("state.Hit"));
+		//static const FGameplayTag HitTag = FGameplayTag::RequestGameplayTag(FName("state.Dead"));
+		if (HitMontage)
+		{
+			FGameplayTagContainer TagContainer(HitTag);
+			ASC->TryActivateAbilitiesByTag(TagContainer);
+		}
+		
+	}
+
+	UE_LOG(LogTemp, Log, TEXT("%s took %.1f damage (ApplyDamage), remaining Health = %.1f"),
+		*GetName(), ActualDamage, AttributeSet ? AttributeSet->GetHealth() : 0.f);
+
+	// ApplyModToAttribute는 PostGameplayEffectExecute를 거치지 않아 OnHealthZero가 자동으로 안 불림 -> 여기서 직접 체크.
+	if (AttributeSet && AttributeSet->GetHealth() <= 0.f)
+	{
+		HandleDeath();
+	}
+
+	return ActualDamage;
+}
+
 const FEnemyTableRow* ABaseEnemyCharacter::GetEnemyData() const
 {
 	const UGameInstance* GameInstance = GetGameInstance();
@@ -128,6 +175,11 @@ const FEnemyTableRow* ABaseEnemyCharacter::GetEnemyData() const
 }
 
 void ABaseEnemyCharacter::HandleHealthZero(const FGameplayEffectModCallbackData& Data)
+{
+	HandleDeath();
+}
+
+void ABaseEnemyCharacter::HandleDeath()
 {
 	if (!HasAuthority() || !AbilitySystemComponent)
 	{
@@ -139,7 +191,7 @@ void ABaseEnemyCharacter::HandleHealthZero(const FGameplayEffectModCallbackData&
 	{
 		return;
 	}
-	AbilitySystemComponent->AddReplicatedLooseGameplayTag(DeadTag);
+	//AbilitySystemComponent->AddReplicatedLooseGameplayTag(DeadTag);
 
 	SetActorEnableCollision(false);
 	if (UCharacterMovementComponent* Movement = GetCharacterMovement())
@@ -148,12 +200,35 @@ void ABaseEnemyCharacter::HandleHealthZero(const FGameplayEffectModCallbackData&
 		Movement->DisableMovement();
 	}
 
-	GetWorldTimerManager().SetTimer(DeathDestroyTimerHandle, this, &ABaseEnemyCharacter::HandleDeathDestroy, DeathDestroyDelay, false);
+	if (AAIController* AICon = Cast<AAIController>(GetController()))
+	{
+		if (UBrainComponent* Brain = AICon->GetBrainComponent())
+		{
+			Brain->StopLogic(TEXT("Dead"));
+		}
+	}
+
+	if (DeadMontage)
+	{
+		FGameplayTagContainer TagContainer(DeadTag);
+		AbilitySystemComponent->TryActivateAbilitiesByTag(TagContainer);
+	}
+	else
+	{
+		HandleDeathDestroy();
+	}
+
+	//
+
+	GetWorldTimerManager().SetTimer(DeathDestroyTimerHandle, this, &ABaseEnemyCharacter::HandleDeathDestroy, 3, false);
 }
 
 void ABaseEnemyCharacter::HandleDeathDestroy()
 {
-	Destroy();
+	if (HasAuthority())
+	{
+		Destroy();
+	}
 }
 
 
