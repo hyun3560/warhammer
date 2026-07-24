@@ -59,6 +59,9 @@ class ALMS_TeamProjectCharacter : public ACharacter, public IAbilitySystemInterf
 	UPROPERTY(EditDefaultsOnly, Category = Effects, meta = (AllowPrivateAccess = "true"))
 	TSubclassOf<UGameplayEffect> DeadEffect;
 
+	UPROPERTY()
+	TObjectPtr<AActor> CurrentReviveTarget = nullptr;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = Interaction, meta = (AllowPrivateAccess = "true"))
 	UInteractionDetectorComponent* InteractionDetector;
 
@@ -134,6 +137,9 @@ class ALMS_TeamProjectCharacter : public ACharacter, public IAbilitySystemInterf
 	UPROPERTY(EditDefaultsOnly, Category = "Coherency")
 	float CoherencyDistance = 500.f;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Revive")
+	float ReviveTraceDistance = 250.f;
+
 public:
 	ALMS_TeamProjectCharacter();
 
@@ -190,6 +196,7 @@ protected:
 	virtual void OnRep_PlayerState() override;
 
 private:
+	FTimerHandle ReviveTraceTimerHandle;
 	FTimerHandle CoherencyTimerHandle;
 
 public:
@@ -213,6 +220,9 @@ public:
 
 	UInteractionDetectorComponent* GetInteractionDetector() const { return InteractionDetector; }
 
+	TObjectPtr<AActor> GetCurrentReviveTarget() const { return CurrentReviveTarget; }
+
 	void CheckCoherency();
+	void TraceForReviveTarget();
 
 };

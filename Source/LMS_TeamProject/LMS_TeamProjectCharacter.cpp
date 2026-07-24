@@ -695,3 +695,67 @@ void ALMS_TeamProjectCharacter::Server_RequestPing_Implementation(FVector_NetQua
 	const FTransform SpawnTransform(FRotator::ZeroRotator, PingLocation);
 	GetWorld()->SpawnActor<APingMarker>(PingMarkerClass, SpawnTransform);
 }
+
+
+bool ALMS_TeamProjectCharacter::CanInteract_Implementation(AActor* Interactor) const
+{
+	if (!Interactor || Interactor == this)
+		return false;
+
+	UAbilitySystemComponent* ASC = GetAbilitySystemComponent();
+	if (!ASC)
+		return false;
+
+	static const FGameplayTag IncapTag =
+		FGameplayTag::RequestGameplayTag(FName("state.Incapacitated"));
+
+	static const FGameplayTag BeingRevivedTag =
+		FGameplayTag::RequestGameplayTag(FName("state.BeingRevived"));
+
+	return ASC->HasMatchingGameplayTag(IncapTag) && !ASC->HasMatchingGameplayTag(BeingRevivedTag);
+}
+
+FGameplayTag ALMS_TeamProjectCharacter::GetInteractionType_Implementation() const
+{
+	static const FGameplayTag ReviveType =
+		FGameplayTag::RequestGameplayTag(FName("Interaction.Revive"));
+	return ReviveType;
+}
+
+int32 ALMS_TeamProjectCharacter::GetInteractInputID_Implementation() const
+{
+	return static_cast<int32>(ELMSAbilityInputID::Interact_Revive);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// InteractionDetector 대상 변경 → HUD 프롬프트 표시/숨김
+// (기존 TraceForReviveTarget에 있던 프롬프트 로직을 여기로 이관)
+
+void ALMS_TeamProjectCharacter::OnInteractTargetChanged(AActor* NewTarget, FGameplayTag InteractionType)
+{
+	APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	if (!PlayerController)
+	{
+		return;
+	}
+
+	ULMSCombatHUDPresenterComponent* CombatHUDPresenter =
+		PlayerController->FindComponentByClass<ULMSCombatHUDPresenterComponent>();
+	if (!CombatHUDPresenter)
+	{
+		return;
+	}
+
+	if (NewTarget)
+	{
+		CombatHUDPresenter->ShowInteractionPrompt(
+			FText::FromString(TEXT("E")),
+			FText::FromString(TEXT("구조하기"))
+		);
+	}
+	else
+	{
+		CombatHUDPresenter->HideInteractionPrompt();
+	}
+}
+
