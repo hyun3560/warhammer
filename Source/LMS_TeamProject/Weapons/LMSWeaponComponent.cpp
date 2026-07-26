@@ -9,6 +9,8 @@
 #include "Engine/DataTable.h"
 #include "Engine/Texture2D.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/PlayerController.h"
+#include "Camera/PlayerCameraManager.h"
 #include "GameplayEffect.h"
 #include "Kismet/GameplayStatics.h"
 #include "LMSWeaponBase.h"
@@ -18,6 +20,8 @@
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Net/UnrealNetwork.h"
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
 #include "TimerManager.h"
 #include "../LMSDamageLibrary.h"
 #include "../LMSGameplayAbility.h"
@@ -799,6 +803,7 @@ void ULMSWeaponComponent::StartMeleeAttack()
 	}
 
 	RegisterComboInput();
+	PlayLocalAttackCameraShake();
 
 	UE_LOG(
 		LogTemp,
@@ -815,6 +820,7 @@ void ULMSWeaponComponent::StartRangedAttack()
 	}
 
 	FireRangedShot(1.f, 1.f, bDrawDebugRangedTrace);
+	PlayLocalAttackCameraShake();
 
 	UE_LOG(
 		LogTemp,
@@ -903,6 +909,7 @@ void ULMSWeaponComponent::BeginWeaponTrace(FName StartSocketName, FName EndSocke
 	}
 
 	bIsWeaponTracing = true;
+	StartWeaponTraceFireEffect();
 
 	if (OwnerCharacter && !OwnerCharacter->HasAuthority())
 	{
@@ -953,6 +960,7 @@ void ULMSWeaponComponent::EndWeaponTrace()
 	}
 
 	bIsWeaponTracing = false;
+	StopWeaponTraceFireEffect();
 	bDrawDebugWeaponTrace = false;
 	ActiveWeaponTraceRadius = WeaponTraceRadius;
 	ActiveWeaponTraceDamageMultiplier = 1.f;
@@ -1109,6 +1117,69 @@ bool ULMSWeaponComponent::IsValidClientWeaponTraceHit(AActor* HitActor, const FV
 	const float AllowedTraceDistance = ActiveWeaponTraceRadius + ClientTraceValidationTolerance;
 	const float ActorDistanceToTrace = FMath::PointDistToSegment(HitActor->GetActorLocation(), TraceStart, TraceEnd);
 	return ActorDistanceToTrace <= AllowedTraceDistance;
+}
+
+void ULMSWeaponComponent::PlayLocalAttackCameraShake() const
+{
+	if (!AttackCameraShake)
+	{
+		return;
+	}
+
+	const ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (!OwnerCharacter || !OwnerCharacter->IsLocallyControlled())
+	{
+		return;
+	}
+
+	APlayerController* PlayerController = Cast<APlayerController>(OwnerCharacter->GetController());
+	if (!PlayerController || !PlayerController->PlayerCameraManager)
+	{
+		return;
+	}
+
+	PlayerController->PlayerCameraManager->StartCameraShake(AttackCameraShake, AttackCameraShakeScale);
+}
+
+void ULMSWeaponComponent::StartWeaponTraceFireEffect()
+{
+	if (!WeaponTraceFireEffect || ActiveWeaponTraceFireComponent)
+	{
+		return;
+	}
+
+	ALMSWeaponBase* TraceWeapon = GetWeaponTraceActor();
+	USkeletalMeshComponent* WeaponMesh = TraceWeapon ? TraceWeapon->GetWeaponMesh() : nullptr;
+	if (!WeaponMesh)
+	{
+		return;
+	}
+
+	const FName SocketName = WeaponTraceFireSocketName.IsNone() ? ActiveTraceStartSocketName : WeaponTraceFireSocketName;
+	ActiveWeaponTraceFireComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
+		WeaponTraceFireEffect,
+		WeaponMesh,
+		SocketName,
+		FVector::ZeroVector,
+		FRotator::ZeroRotator,
+		EAttachLocation::SnapToTarget,
+		true);
+
+	if (ActiveWeaponTraceFireComponent)
+	{
+		ActiveWeaponTraceFireComponent->SetRelativeScale3D(WeaponTraceFireScale);
+	}
+}
+
+void ULMSWeaponComponent::StopWeaponTraceFireEffect()
+{
+	if (!ActiveWeaponTraceFireComponent)
+	{
+		return;
+	}
+
+	ActiveWeaponTraceFireComponent->Deactivate();
+	ActiveWeaponTraceFireComponent = nullptr;
 }
 
 void ULMSWeaponComponent::PlayThirdPersonWeaponMontageLocal(UAnimMontage* Montage, FName SectionName, float PlayRate)

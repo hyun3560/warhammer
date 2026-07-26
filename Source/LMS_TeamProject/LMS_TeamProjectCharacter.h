@@ -13,6 +13,7 @@
 
 class USpringArmComponent;
 class UCameraComponent;
+class UCameraShakeBase;
 class UInputMappingContext;
 class UInputAction;
 class UAbilitySystemComponent;
@@ -114,6 +115,9 @@ protected:
 	void HandleHealthZero(const FGameplayEffectModCallbackData& Data);
 	void HandleIncapHealthZero(const FGameplayEffectModCallbackData& Data);
 
+	UFUNCTION(Client, Unreliable)
+	void ClientPlayDamageCameraShake();
+
 	// ── 죽음 / 래그돌 ─────────────────────────────────────────────
 	UFUNCTION()
 		void OnRep_IsDead();
@@ -187,6 +191,12 @@ private:
 	/** 구조물 부활 시 적용 (죽음/다운 GE 제거 + 체력 복구) */
 	UPROPERTY(EditDefaultsOnly, Category = Effects, meta = (AllowPrivateAccess = "true"))
 		TSubclassOf<UGameplayEffect> RescuedEffect;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Camera Shake|Damage", meta = (AllowPrivateAccess = "true"))
+		TSubclassOf<UCameraShakeBase> DamageCameraShake;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Camera Shake|Damage", meta = (ClampMin = "0.0", AllowPrivateAccess = "true"))
+		float DamageCameraShakeScale = 1.f;
 
 	// ── 입력 ─────────────────────────────────────────────────────
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, meta = (AllowPrivateAccess = "true"))

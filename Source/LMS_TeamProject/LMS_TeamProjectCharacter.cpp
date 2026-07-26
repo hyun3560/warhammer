@@ -6,6 +6,7 @@
 #include "GameplayEffect.h"
 #include "GameplayTagContainer.h"
 #include "Camera/CameraComponent.h"
+#include "Camera/CameraShakeBase.h"
 #include "Components/CapsuleComponent.h"
 #include "Engine/LocalPlayer.h"
 #include "EnhancedInputComponent.h"
@@ -14,6 +15,8 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/GameStateBase.h"
+#include "GameFramework/PlayerController.h"
+#include "Camera/PlayerCameraManager.h"
 #include "GameFramework/PlayerState.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -500,7 +503,14 @@ void ALMS_TeamProjectCharacter::TakeDamage(float Damage)
 
 void ALMS_TeamProjectCharacter::HandleDamaged(const FGameplayEffectModCallbackData& Data)
 {
-	if (!HasAuthority() || !AbilitySystemComponent || !HealBlockEffect)
+	if (!HasAuthority() || !AbilitySystemComponent)
+	{
+		return;
+	}
+
+	ClientPlayDamageCameraShake();
+
+	if (!HealBlockEffect)
 	{
 		return;
 	}
@@ -513,6 +523,22 @@ void ALMS_TeamProjectCharacter::HandleDamaged(const FGameplayEffectModCallbackDa
 	{
 		AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*Spec.Data.Get());
 	}
+}
+
+void ALMS_TeamProjectCharacter::ClientPlayDamageCameraShake_Implementation()
+{
+	if (!DamageCameraShake)
+	{
+		return;
+	}
+
+	APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	if (!PlayerController || !PlayerController->PlayerCameraManager)
+	{
+		return;
+	}
+
+	PlayerController->PlayerCameraManager->StartCameraShake(DamageCameraShake, DamageCameraShakeScale);
 }
 
 void ALMS_TeamProjectCharacter::HandleHealthZero(const FGameplayEffectModCallbackData& Data)
