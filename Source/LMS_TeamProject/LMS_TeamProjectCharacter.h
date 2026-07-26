@@ -186,6 +186,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	ULMSWeaponComponent* GetWeaponComponent() const { return WeaponComponent; }
 
+	bool IsDead() const;
+
 	TObjectPtr<AActor> GetCurrentReviveTarget() const { return CurrentReviveTarget; }
 
 	void TraceForReviveTarget();

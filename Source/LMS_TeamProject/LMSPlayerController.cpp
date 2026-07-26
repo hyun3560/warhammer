@@ -4,6 +4,9 @@
 #include "UI/UIManagerComponent.h"
 #include "UI/IndicatorManagerComponent.h"
 #include "UI/LMSTeamStatusComponent.h"
+#include "UI/LMSMissionFailedWidget.h"
+#include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "LMS_TeamProjectCharacter.h"
 #include "LMS_TeamProjectPlayerState.h"
 #include "Weapons/LMSWeaponComponent.h"
@@ -60,6 +63,64 @@ void ALMSPlayerController::OnRep_PlayerState()
 	{
 		TeamStatusComponent->InitializeTeamStatus();
 	}
+}
+
+void ALMSPlayerController::ClientShowMissionFailedScreen_Implementation()
+{
+	ShowMissionFailedScreen();
+}
+
+void ALMSPlayerController::ShowMissionFailedScreen()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	if (UIManagerComponent)
+	{
+		UIManagerComponent->HideAllUI();
+	}
+
+	if (!MissionFailedWidget)
+	{
+		MissionFailedWidget = CreateWidget<ULMSMissionFailedWidget>(this, ULMSMissionFailedWidget::StaticClass());
+		if (MissionFailedWidget)
+		{
+			MissionFailedWidget->AddToViewport(200);
+			MissionFailedWidget->SetAnchorsInViewport(FAnchors(0.f, 0.f, 1.f, 1.f));
+			MissionFailedWidget->SetAlignmentInViewport(FVector2D::ZeroVector);
+			MissionFailedWidget->SetPositionInViewport(FVector2D::ZeroVector, false);
+			MissionFailedWidget->SetDesiredSizeInViewport(FVector2D(1920.f, 1080.f));
+		}
+	}
+
+	if (MissionFailedWidget)
+	{
+		MissionFailedWidget->SetVisibility(ESlateVisibility::Visible);
+	}
+
+	SetIgnoreMoveInput(true);
+	SetIgnoreLookInput(true);
+
+	FInputModeUIOnly InputMode;
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	SetInputMode(InputMode);
+	bShowMouseCursor = true;
+}
+
+void ALMSPlayerController::ReturnToTitleFromMissionFailed()
+{
+	const FName CurrentLevelName(*UGameplayStatics::GetCurrentLevelName(this, true));
+	if (!CurrentLevelName.IsNone())
+	{
+		UGameplayStatics::OpenLevel(this, CurrentLevelName);
+	}
+}
+
+void ALMSPlayerController::QuitGameFromMissionFailed()
+{
+	UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, true);
 }
 
 void ALMSPlayerController::ShowWeaponSelectionUI()

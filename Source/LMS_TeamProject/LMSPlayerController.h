@@ -9,6 +9,7 @@ class UUIManagerComponent;
 class ULMSCombatHUDPresenterComponent;
 class UIndicatorManagerComponent;
 class ULMSTeamStatusComponent;
+class ULMSMissionFailedWidget;
 
 UCLASS()
 class LMS_TEAMPROJECT_API ALMSPlayerController : public APlayerController
@@ -23,9 +24,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon Selection")
 	void RequestWeaponSelection(FName WeaponID);
 
+	UFUNCTION(BlueprintCallable, Category = "LMS|Mission")
+	void ReturnToTitleFromMissionFailed();
+
+	UFUNCTION(BlueprintCallable, Category = "LMS|Mission")
+	void QuitGameFromMissionFailed();
+
+	UFUNCTION(Client, Reliable)
+	void ClientShowMissionFailedScreen();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void OnRep_PlayerState() override;
+
+	void ShowMissionFailedScreen();
 
 	// 무기 선택 UI를 화면에 표시하고 마우스 입력을 UI에 사용할 수 있게 합니다.
 	void ShowWeaponSelectionUI();
@@ -59,4 +71,7 @@ private:
 	// 팀원 목록과 팀원 HP/Shield 값을 HUD 팀원 슬롯에 전달하는 컴포넌트입니다.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "LMS|UI", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<ULMSTeamStatusComponent> TeamStatusComponent;
+
+	UPROPERTY()
+	TObjectPtr<ULMSMissionFailedWidget> MissionFailedWidget;
 };

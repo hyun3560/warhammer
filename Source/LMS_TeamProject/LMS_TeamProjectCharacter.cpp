@@ -12,6 +12,7 @@
 #include "InputActionValue.h"
 #include "AbilitySystemComponent.h"
 #include "LMSAttributeSet.h"
+#include "LMS_TeamProjectGameMode.h"
 #include "LMS_TeamProjectPlayerState.h"
 #include "LMSGameplayAbility.h"
 #include "GameplayEffect.h"
@@ -335,8 +336,18 @@ void ALMS_TeamProjectCharacter::HandleIncapHealthZero(const FGameplayEffectModCa
 	{
 		AbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*DeadSpec.Data.Get());
 
+		if (ALMS_TeamProjectGameMode* LMSGameMode = GetWorld()->GetAuthGameMode<ALMS_TeamProjectGameMode>())
+		{
+			LMSGameMode->NotifyPlayerCharacterDied();
+		}
 	}
 
+}
+
+bool ALMS_TeamProjectCharacter::IsDead() const
+{
+	static const FGameplayTag DeadTag = FGameplayTag::RequestGameplayTag(FName("state.Dead"));
+	return AbilitySystemComponent && AbilitySystemComponent->HasMatchingGameplayTag(DeadTag);
 }
 
 void ALMS_TeamProjectCharacter::TraceForReviveTarget()
