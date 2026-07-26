@@ -13,6 +13,13 @@ class ALMS_TeamProjectGameMode : public AGameModeBase
 
 public:
 	ALMS_TeamProjectGameMode();
+
+	void NotifyPlayerCharacterDied();
+
+private:
+	void CheckMissionFailed();
+
+	bool bMissionFailed = false;
 };
 
 

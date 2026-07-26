@@ -17,6 +17,7 @@
 #include "UI/IndicatorManagerComponent.h"
 #include "UI/LMSTeamStatusComponent.h"
 #include "UI/LMSMainMenuWidget.h"
+#include "UI/LMSMissionFailedWidget.h"
 #include "LMS_TeamProjectCharacter.h"
 #include "LMS_TeamProjectPlayerState.h"
 #include "Weapons/LMSWeaponComponent.h"
@@ -918,6 +919,65 @@ void ALMSPlayerController::SetMainMenuStatusMessage(const FText& Message) const
 }
 
 void ALMSPlayerController::QuitGameFromMainMenu()
+{
+	UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, true);
+}
+
+void ALMSPlayerController::ClientShowMissionFailedScreen_Implementation()
+{
+	ShowMissionFailedScreen();
+}
+
+void ALMSPlayerController::ShowMissionFailedScreen()
+{
+	if (!IsLocalController())
+	{
+		return;
+	}
+
+	if (UIManagerComponent)
+	{
+		UIManagerComponent->HideAllUI();
+	}
+
+	if (!MissionFailedWidget)
+	{
+		MissionFailedWidget = CreateWidget<ULMSMissionFailedWidget>(this, ULMSMissionFailedWidget::StaticClass());
+		if (MissionFailedWidget)
+		{
+			MissionFailedWidget->AddToViewport(200);
+			MissionFailedWidget->SetAnchorsInViewport(FAnchors(0.f, 0.f, 1.f, 1.f));
+			MissionFailedWidget->SetAlignmentInViewport(FVector2D::ZeroVector);
+			MissionFailedWidget->SetPositionInViewport(FVector2D::ZeroVector, false);
+			MissionFailedWidget->SetDesiredSizeInViewport(FVector2D(1920.f, 1080.f));
+		}
+	}
+
+	if (MissionFailedWidget)
+	{
+		MissionFailedWidget->SetVisibility(ESlateVisibility::Visible);
+	}
+
+	SetIgnoreMoveInput(true);
+	SetIgnoreLookInput(true);
+
+	FInputModeUIOnly InputMode;
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	SetInputMode(InputMode);
+	bShowMouseCursor = true;
+}
+
+void ALMSPlayerController::ReturnToTitleFromMissionFailed()
+{
+	if (ULMSMenuFlowSubsystem* MenuFlowSubsystem = GetGameInstance()
+		? GetGameInstance()->GetSubsystem<ULMSMenuFlowSubsystem>()
+		: nullptr)
+	{
+		UGameplayStatics::OpenLevel(this, MenuFlowSubsystem->GetGameMapName());
+	}
+}
+
+void ALMSPlayerController::QuitGameFromMissionFailed()
 {
 	UKismetSystemLibrary::QuitGame(this, this, EQuitPreference::Quit, true);
 }

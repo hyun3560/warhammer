@@ -12,6 +12,7 @@ class ULMSCombatHUDPresenterComponent;
 class UIndicatorManagerComponent;
 class ULMSTeamStatusComponent;
 class ULMSMainMenuWidget;
+class ULMSMissionFailedWidget;
 class UAbilitySystemComponent;
 class UCameraComponent;
 class UPrimitiveComponent;
@@ -42,6 +43,15 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "LMS|Menu")
 	void QuitGameFromMainMenu();
+
+	UFUNCTION(BlueprintCallable, Category = "LMS|Mission")
+	void ReturnToTitleFromMissionFailed();
+
+	UFUNCTION(BlueprintCallable, Category = "LMS|Mission")
+	void QuitGameFromMissionFailed();
+
+	UFUNCTION(Client, Reliable)
+	void ClientShowMissionFailedScreen();
 
 protected:
 	virtual void BeginPlay() override;
@@ -75,6 +85,7 @@ protected:
 	void JoinFirstFoundMainMenuSession();
 	FString NormalizeMainMenuConnectString(const FString& ConnectString) const;
 	void SetMainMenuStatusMessage(const FText& Message) const;
+	void ShowMissionFailedScreen();
 
 	// 무기 선택 UI를 화면에 표시하고 마우스 입력을 UI에 사용할 수 있게 합니다.
 	void ShowWeaponSelectionUI();
@@ -111,6 +122,9 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<ULMSMainMenuWidget> MainMenuWidget;
+
+	UPROPERTY()
+	TObjectPtr<ULMSMissionFailedWidget> MissionFailedWidget;
 
 	UPROPERTY()
 	TObjectPtr<ACameraActor> RuntimeMenuCamera;

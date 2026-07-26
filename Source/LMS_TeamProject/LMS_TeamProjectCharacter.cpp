@@ -27,6 +27,7 @@
 #include "LMSGameplayAbility.h"
 #include "LMSInteractableInterface.h"
 #include "LMSSpectatorPawn.h"
+#include "LMS_TeamProjectGameMode.h"
 #include "LMS_TeamProjectPlayerState.h"
 #include "PingMarker.h"
 #include "UI/IndicatorManagerComponent.h"
@@ -639,6 +640,11 @@ void ALMS_TeamProjectCharacter::HandleIncapHealthZero(const FGameplayEffectModCa
 
 	bIsDead = true;
 	StartRagdoll();   // 서버는 직접, 클라는 OnRep_IsDead 경유
+
+	if (ALMS_TeamProjectGameMode* LMSGameMode = GetWorld()->GetAuthGameMode<ALMS_TeamProjectGameMode>())
+	{
+		LMSGameMode->NotifyPlayerCharacterDied();
+	}
 }
 
 AActor* ALMS_TeamProjectCharacter::FindFirstLivingAlly() const
