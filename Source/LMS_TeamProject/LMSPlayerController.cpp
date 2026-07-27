@@ -108,7 +108,7 @@ void ALMSPlayerController::InitializeGameplayUI()
 
 	BindGroggyCameraState();
 
-	//ShowWeaponSelectionUI();
+	ShowWeaponSelectionUI();
 }
 
 void ALMSPlayerController::OnRep_PlayerState()
