@@ -1,2 +1,2 @@
-# Unreal binary assets are ignored for now.
-# Do not enable Git LFS filters unless the team decides to use LFS.
+*.uasset binary
+*.umap binary

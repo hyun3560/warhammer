@@ -147,6 +147,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Animation")
 	void StopReplicatedThirdPersonWeaponMontage(UAnimMontage* Montage, float BlendOutTime = 0.15f);
 
+	// CurrentWeaponData.ProjectileClass를 Spawn하여 조준 방향으로 직선 발사 (Projectile 기반 라이플 발사)
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Ranged")
+	void FireRifleProjectile(float DamageMultiplier);
+
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Trace")
 	void BeginWeaponTrace(FName StartSocketName, FName EndSocketName, float TraceRadius, float DamageMultiplier, bool bDrawDebugTrace);
 
@@ -235,6 +239,7 @@ protected:
 	void BroadcastSkillCooldownChanged(float CurrentCooldown, float MaxCooldown);
 	float ResolveCurrentWeaponSkillCooldownDuration() const;
 	void CacheWeaponDataByID(FName WeaponID);
+	void ApplyWeaponAnimClass();
 	UTexture2D* ResolveWeaponHUDIcon() const;
 	bool ShouldShowAmmoOnHUD() const;
 	void RestartReplicatedSkillCooldownTimer();
