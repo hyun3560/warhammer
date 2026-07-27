@@ -1,4 +1,4 @@
-﻿# Visual Studio 2015 user specific files
+# Visual Studio 2015 user specific files
 .vs/
 
 # Compiled Object files
@@ -74,25 +74,13 @@ Plugins/**/Intermediate/*
 # Cache files for the editor to use
 DerivedDataCache/*
 
-# Local-only large asset packs
-Content/_LocalOnly/
-Content/Scifi_desert_city/
-Content/Sci_FI_Valley_Village/
-Content/Paragon*/
-!Content/ParagonMurdock/
-!Content/ParagonMurdock/**
-Content/Resources/
-Content/Resource/
-!Content/Resource/
-Content/Resource/*
-!Content/Resource/Scifi_desert_city/
-Content/Resource/Scifi_desert_city/*
-!Content/Resource/Scifi_desert_city/Level/
-Content/Resource/Scifi_desert_city/Level/*
-Content/ParagonIggyScorch/
-Content/ParagonGrux/
-Content/ParagonGRIMexe/
-!Content/Resource/Scifi_desert_city/Level/L_showcase_level.umap
-Content/ParagonKwang/
-Content/ParagonSevarog/
+# Unreal assets are local-only for now.
+# Commit selected assets later with `git add -f <path>` if needed.
+Content/
+*.uasset
+*.umap
+*.ubulk
+*.uexp
+*.uptnl
+*_BuiltData.uasset
 _LocalOnly/

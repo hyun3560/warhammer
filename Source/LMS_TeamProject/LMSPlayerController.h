@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "Interfaces/OnlineSessionInterface.h"
+#include "OnlineSessionSettings.h"
 #include "LMSPlayerController.generated.h"
 
 
@@ -9,6 +11,12 @@ class UUIManagerComponent;
 class ULMSCombatHUDPresenterComponent;
 class UIndicatorManagerComponent;
 class ULMSTeamStatusComponent;
+class ULMSMainMenuWidget;
+class UAbilitySystemComponent;
+class UCameraComponent;
+class UPrimitiveComponent;
+class ACameraActor;
+struct FGameplayTag;
 
 UCLASS()
 class LMS_TEAMPROJECT_API ALMSPlayerController : public APlayerController
@@ -23,9 +31,50 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon Selection")
 	void RequestWeaponSelection(FName WeaponID);
 
+	UFUNCTION(BlueprintCallable, Category = "LMS|Menu")
+	void HostGameFromMainMenu();
+
+	UFUNCTION(BlueprintCallable, Category = "LMS|Menu")
+	void JoinGameFromMainMenu(const FString& Address);
+
+	UFUNCTION(BlueprintCallable, Category = "LMS|Menu")
+	void FindGameFromMainMenu();
+
+	UFUNCTION(BlueprintCallable, Category = "LMS|Menu")
+	void QuitGameFromMainMenu();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void OnRep_PlayerState() override;
+	virtual void AcknowledgePossession(APawn* P) override;
+
+	void InitializeGameplayUI();
+	void ShowStartupMenu();
+	void HideStartupMenu();
+	void BeginGameplayIntro();
+	void TryBlendFromMenuCameraToPawn();
+	void FinishGameplayIntro();
+	ACameraActor* FindOrSpawnMenuCamera();
+	void BindGroggyCameraState();
+	void UnbindGroggyCameraState();
+	void UpdateGroggyCameraState();
+	void HandleGroggyCameraTagChanged(const FGameplayTag CallbackTag, int32 NewCount);
+	void EnterGroggyCamera();
+	void ExitGroggyCamera();
+	void SetLocalCharacterThirdPersonCameraEnabled(bool bEnabled);
+	void ApplyGroggyMeshVisibility(class ALMS_TeamProjectCharacter* LMSCharacter);
+	void RestorePreGroggyMeshVisibility();
+	bool IsFirstPersonViewPrimitiveComponent(const UPrimitiveComponent* PrimitiveComponent, const UPrimitiveComponent* ThirdPersonMesh) const;
+	IOnlineSessionPtr GetOnlineSessionInterface() const;
+	void CreateMainMenuSession();
+	void OpenMainMenuListenLevel() const;
+	void OnCreateMainMenuSessionComplete(FName SessionName, bool bWasSuccessful);
+	void OnDestroyMainMenuSessionComplete(FName SessionName, bool bWasSuccessful);
+	void OnFindMainMenuSessionsComplete(bool bWasSuccessful);
+	void OnJoinMainMenuSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result);
+	void JoinFirstFoundMainMenuSession();
+	FString NormalizeMainMenuConnectString(const FString& ConnectString) const;
+	void SetMainMenuStatusMessage(const FText& Message) const;
 
 	// 무기 선택 UI를 화면에 표시하고 마우스 입력을 UI에 사용할 수 있게 합니다.
 	void ShowWeaponSelectionUI();
@@ -59,4 +108,41 @@ private:
 	// 팀원 목록과 팀원 HP/Shield 값을 HUD 팀원 슬롯에 전달하는 컴포넌트입니다.
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "LMS|UI", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<ULMSTeamStatusComponent> TeamStatusComponent;
+
+	UPROPERTY()
+	TObjectPtr<ULMSMainMenuWidget> MainMenuWidget;
+
+	UPROPERTY()
+	TObjectPtr<ACameraActor> RuntimeMenuCamera;
+
+	UPROPERTY()
+	TObjectPtr<UAbilitySystemComponent> CachedGroggyCameraAbilitySystemComponent;
+
+	UPROPERTY()
+	TArray<TObjectPtr<UCameraComponent>> PreGroggyActiveCameraComponents;
+
+	struct FGroggyPrimitiveVisibilityState
+	{
+		TWeakObjectPtr<UPrimitiveComponent> PrimitiveComponent;
+		bool bHiddenInGame = false;
+		bool bOwnerNoSee = false;
+		bool bOnlyOwnerSee = false;
+	};
+
+	TArray<FGroggyPrimitiveVisibilityState> PreGroggyPrimitiveVisibilityStates;
+
+	FTimerHandle GameplayIntroRetryTimerHandle;
+	FTimerHandle GameplayIntroFinishTimerHandle;
+	FDelegateHandle GroggyCameraTagDelegateHandle;
+	FDelegateHandle CreateSessionCompleteDelegateHandle;
+	FDelegateHandle DestroySessionCompleteDelegateHandle;
+	FDelegateHandle FindSessionsCompleteDelegateHandle;
+	FDelegateHandle JoinSessionCompleteDelegateHandle;
+
+	TSharedPtr<FOnlineSessionSearch> SessionSearch;
+	FOnlineSessionSearchResult PendingJoinSessionSearchResult;
+
+	int32 GameplayIntroRetryCount = 0;
+	bool bUsingGroggyCamera = false;
+	bool bHasPendingJoinSessionSearchResult = false;
 };

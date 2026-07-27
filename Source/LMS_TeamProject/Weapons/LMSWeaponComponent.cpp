@@ -9,6 +9,8 @@
 #include "Engine/DataTable.h"
 #include "Engine/Texture2D.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/PlayerController.h"
+#include "Camera/PlayerCameraManager.h"
 #include "GameplayEffect.h"
 #include "Kismet/GameplayStatics.h"
 #include "LMSWeaponBase.h"
@@ -18,6 +20,8 @@
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Net/UnrealNetwork.h"
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
 #include "TimerManager.h"
 #include "../LMSDamageLibrary.h"
 #include "../LMSGameplayAbility.h"
@@ -674,6 +678,35 @@ void ULMSWeaponComponent::RefreshFirstPersonWeaponVisual()
 	FirstPersonWeapon->SetActorEnableCollision(false);
 
 	CurrentWeapon->SetOwnerVisibilityRules(false, true, true);
+	ApplyLocalWeaponViewVisibility();
+}
+
+void ULMSWeaponComponent::SetLocalFirstPersonWeaponViewEnabled(bool bEnabled)
+{
+	bUseLocalFirstPersonWeaponView = bEnabled;
+	ApplyLocalWeaponViewVisibility();
+}
+
+void ULMSWeaponComponent::ApplyLocalWeaponViewVisibility()
+{
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (!OwnerCharacter || !OwnerCharacter->IsLocallyControlled())
+	{
+		return;
+	}
+
+	const bool bHasFirstPersonWeapon = FirstPersonWeapon != nullptr;
+
+	if (FirstPersonWeapon)
+	{
+		FirstPersonWeapon->SetActorHiddenInGame(!bUseLocalFirstPersonWeaponView);
+		FirstPersonWeapon->SetOwnerVisibilityRules(true, false, false);
+	}
+
+	if (CurrentWeapon)
+	{
+		CurrentWeapon->SetOwnerVisibilityRules(false, bUseLocalFirstPersonWeaponView && bHasFirstPersonWeapon, true);
+	}
 }
 
 void ULMSWeaponComponent::GrantCurrentWeaponAbilities()
@@ -770,6 +803,7 @@ void ULMSWeaponComponent::StartMeleeAttack()
 	}
 
 	RegisterComboInput();
+	PlayLocalAttackCameraShake();
 
 	UE_LOG(
 		LogTemp,
@@ -786,6 +820,7 @@ void ULMSWeaponComponent::StartRangedAttack()
 	}
 
 	FireRangedShot(1.f, 1.f, bDrawDebugRangedTrace);
+	PlayLocalAttackCameraShake();
 
 	UE_LOG(
 		LogTemp,
@@ -864,7 +899,7 @@ void ULMSWeaponComponent::BeginWeaponTrace(FName StartSocketName, FName EndSocke
 	ActiveTraceEndSocketName = EndSocketName.IsNone() ? DefaultTraceEndSocketName : EndSocketName;
 	ActiveWeaponTraceRadius = TraceRadius > 0.f ? TraceRadius : WeaponTraceRadius;
 	ActiveWeaponTraceDamageMultiplier = ConsumeWeaponTraceDamageMultiplier(DamageMultiplier);
-	bDrawDebugWeaponTrace = bDrawDebugTrace;
+	bDrawDebugWeaponTrace = false;
 	WeaponTraceHitActors.Reset();
 
 	if (!GetWeaponTraceSocketLocations(PreviousTraceStart, PreviousTraceEnd))
@@ -874,6 +909,7 @@ void ULMSWeaponComponent::BeginWeaponTrace(FName StartSocketName, FName EndSocke
 	}
 
 	bIsWeaponTracing = true;
+	StartWeaponTraceFireEffect();
 
 	if (OwnerCharacter && !OwnerCharacter->HasAuthority())
 	{
@@ -924,6 +960,7 @@ void ULMSWeaponComponent::EndWeaponTrace()
 	}
 
 	bIsWeaponTracing = false;
+	StopWeaponTraceFireEffect();
 	bDrawDebugWeaponTrace = false;
 	ActiveWeaponTraceRadius = WeaponTraceRadius;
 	ActiveWeaponTraceDamageMultiplier = 1.f;
@@ -1082,6 +1119,69 @@ bool ULMSWeaponComponent::IsValidClientWeaponTraceHit(AActor* HitActor, const FV
 	return ActorDistanceToTrace <= AllowedTraceDistance;
 }
 
+void ULMSWeaponComponent::PlayLocalAttackCameraShake() const
+{
+	if (!AttackCameraShake)
+	{
+		return;
+	}
+
+	const ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (!OwnerCharacter || !OwnerCharacter->IsLocallyControlled())
+	{
+		return;
+	}
+
+	APlayerController* PlayerController = Cast<APlayerController>(OwnerCharacter->GetController());
+	if (!PlayerController || !PlayerController->PlayerCameraManager)
+	{
+		return;
+	}
+
+	PlayerController->PlayerCameraManager->StartCameraShake(AttackCameraShake, AttackCameraShakeScale);
+}
+
+void ULMSWeaponComponent::StartWeaponTraceFireEffect()
+{
+	if (!WeaponTraceFireEffect || ActiveWeaponTraceFireComponent)
+	{
+		return;
+	}
+
+	ALMSWeaponBase* TraceWeapon = GetWeaponTraceActor();
+	USkeletalMeshComponent* WeaponMesh = TraceWeapon ? TraceWeapon->GetWeaponMesh() : nullptr;
+	if (!WeaponMesh)
+	{
+		return;
+	}
+
+	const FName SocketName = WeaponTraceFireSocketName.IsNone() ? ActiveTraceStartSocketName : WeaponTraceFireSocketName;
+	ActiveWeaponTraceFireComponent = UNiagaraFunctionLibrary::SpawnSystemAttached(
+		WeaponTraceFireEffect,
+		WeaponMesh,
+		SocketName,
+		FVector::ZeroVector,
+		FRotator::ZeroRotator,
+		EAttachLocation::SnapToTarget,
+		true);
+
+	if (ActiveWeaponTraceFireComponent)
+	{
+		ActiveWeaponTraceFireComponent->SetRelativeScale3D(WeaponTraceFireScale);
+	}
+}
+
+void ULMSWeaponComponent::StopWeaponTraceFireEffect()
+{
+	if (!ActiveWeaponTraceFireComponent)
+	{
+		return;
+	}
+
+	ActiveWeaponTraceFireComponent->Deactivate();
+	ActiveWeaponTraceFireComponent = nullptr;
+}
+
 void ULMSWeaponComponent::PlayThirdPersonWeaponMontageLocal(UAnimMontage* Montage, FName SectionName, float PlayRate)
 {
 	if (!Montage)
@@ -1165,17 +1265,20 @@ void ULMSWeaponComponent::PlayReplicatedThirdPersonWeaponMontage(UAnimMontage* M
 		return;
 	}
 
-	PlayThirdPersonWeaponMontageLocal(Montage, SectionName, PlayRate);
-
 	ACharacter* OwnerCharacter = GetOwnerCharacter();
-	if (OwnerCharacter && OwnerCharacter->HasAuthority())
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
 	{
-		ReplicateThirdPersonWeaponMontage(Montage, SectionName, PlayRate);
+		// Local-predicted abilities also run on the owning client. Let the
+		// server instance be the only source of replicated third-person montages.
+		return;
 	}
-	else
+
+	if (!OwnerCharacter->IsLocallyControlled())
 	{
-		ServerPlayThirdPersonWeaponMontage(Montage, SectionName, PlayRate);
+		PlayThirdPersonWeaponMontageLocal(Montage, SectionName, PlayRate);
 	}
+
+	ReplicateThirdPersonWeaponMontage(Montage, SectionName, PlayRate);
 }
 
 void ULMSWeaponComponent::StopReplicatedThirdPersonWeaponMontage(UAnimMontage* Montage, float BlendOutTime)
@@ -1185,17 +1288,18 @@ void ULMSWeaponComponent::StopReplicatedThirdPersonWeaponMontage(UAnimMontage* M
 		return;
 	}
 
-	StopThirdPersonWeaponMontageLocal(Montage, BlendOutTime);
-
 	ACharacter* OwnerCharacter = GetOwnerCharacter();
-	if (OwnerCharacter && OwnerCharacter->HasAuthority())
+	if (!OwnerCharacter || !OwnerCharacter->HasAuthority())
 	{
-		ReplicateStopThirdPersonWeaponMontage(Montage);
+		return;
 	}
-	else
+
+	if (!OwnerCharacter->IsLocallyControlled())
 	{
-		ServerStopThirdPersonWeaponMontage(Montage);
+		StopThirdPersonWeaponMontageLocal(Montage, BlendOutTime);
 	}
+
+	ReplicateStopThirdPersonWeaponMontage(Montage);
 }
 
 void ULMSWeaponComponent::ServerPlayThirdPersonWeaponMontage_Implementation(UAnimMontage* Montage, FName SectionName, float PlayRate)

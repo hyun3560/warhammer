@@ -24,7 +24,7 @@ ALMSSpectatorPawn::ALMSSpectatorPawn()
 
     SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
     SpringArm->SetupAttachment(Root);
-    SpringArm->SetRelativeLocation(FVector(0.f, 0.f, 50.f));
+    SpringArm->SetRelativeLocation(FVector(0.f, 0.f, 120.f));
     SpringArm->TargetArmLength = 400.f;
     SpringArm->bUsePawnControlRotation = true;
     SpringArm->bDoCollisionTest = true;
