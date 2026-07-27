@@ -12,7 +12,10 @@ class UAbilitySystemComponent;
 class UAnimInstance;
 class UAnimMontage;
 class UCameraComponent;
+class UCameraShakeBase;
 class UDataTable;
+class UNiagaraComponent;
+class UNiagaraSystem;
 class USceneComponent;
 class UTexture2D;
 
@@ -60,6 +63,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	void UnequipCurrentWeapon();
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|First Person")
+	void SetLocalFirstPersonWeaponViewEnabled(bool bEnabled);
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	void StartAttack();
@@ -135,31 +141,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Ranged")
 	void FireRangedShot(float DamageMultiplier, float RangeMultiplier, bool bDrawDebugTrace);
 
-	// CurrentWeaponData.ProjectileClass를 Spawn하여 조준 방향으로 직선 발사 (Projectile 기반 라이플 발사용)
-	UFUNCTION(BlueprintCallable, Category = "Weapon|Ranged")
-	void FireRifleProjectile(float DamageMultiplier);
-
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Animation")
 	void PlayReplicatedThirdPersonWeaponMontage(UAnimMontage* Montage, FName SectionName = NAME_None, float PlayRate = 1.f);
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Animation")
 	void StopReplicatedThirdPersonWeaponMontage(UAnimMontage* Montage, float BlendOutTime = 0.15f);
-
-	// 소유 클라이언트에서 호출 → 서버 경유 → 모든 클라이언트의 3인칭 몸(메인 Mesh)에 몽타주 재생.
-	// (1인칭 팔 몽타주는 로컬에서 별도로 재생한다.)
-	UFUNCTION(BlueprintCallable, Category = "Weapon|Anim")
-	void PlayThirdPersonMontage(UAnimMontage* Montage, float PlayRate = 1.f);
-
-protected:
-	UFUNCTION(Server, Reliable)
-	void Server_PlayThirdPersonMontage(UAnimMontage* Montage, float PlayRate);
-
-	UFUNCTION(NetMulticast, Reliable)
-	void Multicast_PlayThirdPersonMontage(UAnimMontage* Montage, float PlayRate);
-
-	void PlayThirdPersonMontageLocal(UAnimMontage* Montage, float PlayRate);
-
-public:
 
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Trace")
 	void BeginWeaponTrace(FName StartSocketName, FName EndSocketName, float TraceRadius, float DamageMultiplier, bool bDrawDebugTrace);
@@ -233,6 +219,7 @@ protected:
 	ALMSWeaponBase* SpawnWeaponActor(const FWeaponData& WeaponData, TSubclassOf<ALMSWeaponBase> OverrideWeaponClass = nullptr) const;
 	USceneComponent* FindFirstPersonWeaponAttachComponent() const;
 	void RefreshFirstPersonWeaponVisual();
+	void ApplyLocalWeaponViewVisibility();
 	void StartMeleeAttack();
 	void StartRangedAttack();
 	void StartBlock();
@@ -257,6 +244,9 @@ protected:
 	void HandleWeaponTraceHit(const FHitResult& Hit, const FVector& TraceStart, const FVector& TraceEnd);
 	float ConsumeWeaponTraceDamageMultiplier(float DamageMultiplier);
 	bool IsValidClientWeaponTraceHit(AActor* HitActor, const FVector& TraceStart, const FVector& TraceEnd) const;
+	void PlayLocalAttackCameraShake() const;
+	void StartWeaponTraceFireEffect();
+	void StopWeaponTraceFireEffect();
 	void PlayThirdPersonWeaponMontageLocal(UAnimMontage* Montage, FName SectionName, float PlayRate);
 	void StopThirdPersonWeaponMontageLocal(UAnimMontage* Montage, float BlendOutTime);
 	void ReplicateThirdPersonWeaponMontage(UAnimMontage* Montage, FName SectionName, float PlayRate = 1.f);
@@ -339,6 +329,21 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Trace")
 	float ClientTraceValidationTolerance = 180.f;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|FX|Trace")
+	TObjectPtr<UNiagaraSystem> WeaponTraceFireEffect;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|FX|Trace")
+	FName WeaponTraceFireSocketName = TEXT("TraceStart");
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|FX|Trace")
+	FVector WeaponTraceFireScale = FVector(1.f);
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Camera Shake|Attack")
+	TSubclassOf<UCameraShakeBase> AttackCameraShake;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Camera Shake|Attack", meta = (ClampMin = "0.0"))
+	float AttackCameraShakeScale = 1.f;
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon|Aim")
 	float AimFOV = 65.f;
 
@@ -415,6 +420,7 @@ protected:
 	bool bIsWeaponTracing = false;
 	bool bAcceptClientWeaponTraceHits = false;
 	bool bDrawDebugWeaponTrace = false;
+	bool bUseLocalFirstPersonWeaponView = true;
 	float ActiveWeaponTraceRadius = 12.f;
 	float ActiveWeaponTraceDamageMultiplier = 1.f;
 	FName ActiveTraceStartSocketName = NAME_None;
@@ -422,6 +428,9 @@ protected:
 	FVector PreviousTraceStart = FVector::ZeroVector;
 	FVector PreviousTraceEnd = FVector::ZeroVector;
 	TSet<TWeakObjectPtr<AActor>> WeaponTraceHitActors;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UNiagaraComponent> ActiveWeaponTraceFireComponent;
 
 	TWeakObjectPtr<UAnimInstance> ActiveComboAnimInstance;
 	TWeakObjectPtr<UAnimMontage> ActiveComboMontage;

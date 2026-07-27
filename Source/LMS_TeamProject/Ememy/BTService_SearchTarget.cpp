@@ -2,10 +2,35 @@
 
 #include "BTService_SearchTarget.h"
 #include "AIController.h"
-#include "GameFramework/Character.h"
+#include "../LMS_TeamProjectCharacter.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Perception/AIPerceptionComponent.h"
 #include "Perception/AISense_Sight.h"
+#include "AbilitySystemInterface.h"
+#include "AbilitySystemComponent.h"
+#include "GameplayTagContainer.h"
+
+namespace
+{
+	bool IsActorDead(AActor* Actor)
+	{
+		IAbilitySystemInterface* ASI = Cast<IAbilitySystemInterface>(Actor);
+		if (!ASI)
+		{
+			return false;
+		}
+
+		UAbilitySystemComponent* ASC = ASI->GetAbilitySystemComponent();
+		if (!ASC)
+		{
+			return false;
+		}
+
+		static const FGameplayTag DeadTag =
+			FGameplayTag::RequestGameplayTag(FName("state.Dead"));
+		return ASC->HasMatchingGameplayTag(DeadTag);
+	}
+}
 
 UBTService_SearchTarget::UBTService_SearchTarget()
 {
@@ -23,6 +48,18 @@ void UBTService_SearchTarget::TickNode(UBehaviorTreeComponent& OwnerComp, uint8*
 		return;
 	}
 
+	AActor* CurrentTarget = Cast<AActor>(BlackboardComp->GetValueAsObject(GetSelectedBlackboardKey()));
+	if (CurrentTarget && IsActorDead(CurrentTarget))
+	{
+		BlackboardComp->ClearValue(GetSelectedBlackboardKey());
+		CurrentTarget = nullptr;
+	}
+
+	if (CurrentTarget)
+	{
+		return;
+	}
+
 	UAIPerceptionComponent* Perception = AIController->GetPerceptionComponent();
 	if (!Perception)
 	{
@@ -32,21 +69,19 @@ void UBTService_SearchTarget::TickNode(UBehaviorTreeComponent& OwnerComp, uint8*
 	TArray<AActor*> SightedActors;
 	Perception->GetCurrentlyPerceivedActors(UAISense_Sight::StaticClass(), SightedActors);
 
-	AActor* FoundCharacter = nullptr;
 	for (AActor* Actor : SightedActors)
 	{
-		if (Actor && Actor->IsA<ACharacter>())
+		if (!Actor || !Actor->IsA<ALMS_TeamProjectCharacter>())
 		{
-			FoundCharacter = Actor;
-			break;
+			continue;
 		}
-	}
-	if (FoundCharacter)
-	{
-		BlackboardComp->SetValueAsObject(GetSelectedBlackboardKey(), FoundCharacter);
-	}
-	else
-	{
-		BlackboardComp->ClearValue(GetSelectedBlackboardKey());
+
+		if (IsActorDead(Actor))
+		{
+			continue;
+		}
+
+		BlackboardComp->SetValueAsObject(GetSelectedBlackboardKey(), Actor);
+		return;
 	}
 }

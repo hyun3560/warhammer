@@ -1,6 +1,10 @@
 #include "LMSWeaponSecondaryAbility.h"
 
+#include "Animation/AnimMontage.h"
+#include "Components/ActorComponent.h"
+#include "GameFramework/Pawn.h"
 #include "LMSWeaponComponent.h"
+#include "UObject/UnrealType.h"
 
 ULMSWeaponSecondaryAbility::ULMSWeaponSecondaryAbility()
 {
@@ -21,8 +25,10 @@ void ULMSWeaponSecondaryAbility::ActivateAbility(
 
 	if (ULMSWeaponComponent* WeaponComponent = GetWeaponComponentFromActorInfo())
 	{
+		bDestroyedServerSideNonLocalBlockShieldEffect = false;
 		WeaponComponent->StartSecondaryAction();
 		OnSecondaryStarted(WeaponComponent);
+		DestroyServerSideNonLocalBlockShieldEffect(ActorInfo);
 	}
 	else
 	{
@@ -49,7 +55,73 @@ void ULMSWeaponSecondaryAbility::EndAbility(
 	{
 		WeaponComponent->StopSecondaryAction();
 		OnSecondaryEnded(WeaponComponent, bWasCancelled);
+		PlayServerSideNonLocalShieldEndMontage(WeaponComponent);
 	}
 
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
+}
+
+bool ULMSWeaponSecondaryAbility::IsServerSideNonLocalAvatar(const FGameplayAbilityActorInfo* ActorInfo) const
+{
+	const AActor* AvatarActor = ActorInfo ? ActorInfo->AvatarActor.Get() : GetAvatarActorFromActorInfo();
+	if (!AvatarActor || !AvatarActor->HasAuthority())
+	{
+		return false;
+	}
+
+	const APawn* AvatarPawn = Cast<APawn>(AvatarActor);
+	if (AvatarPawn && AvatarPawn->IsLocallyControlled())
+	{
+		return false;
+	}
+
+	return true;
+}
+
+void ULMSWeaponSecondaryAbility::DestroyServerSideNonLocalBlockShieldEffect(const FGameplayAbilityActorInfo* ActorInfo)
+{
+	if (!IsServerSideNonLocalAvatar(ActorInfo))
+	{
+		return;
+	}
+
+	FObjectProperty* BlockShieldProperty = FindFProperty<FObjectProperty>(GetClass(), TEXT("BlockShieldPSC"));
+	if (!BlockShieldProperty)
+	{
+		return;
+	}
+
+	UActorComponent* BlockShieldComponent = Cast<UActorComponent>(BlockShieldProperty->GetObjectPropertyValue_InContainer(this));
+	if (!BlockShieldComponent)
+	{
+		return;
+	}
+
+	BlockShieldComponent->DestroyComponent();
+	BlockShieldProperty->SetObjectPropertyValue_InContainer(this, nullptr);
+	bDestroyedServerSideNonLocalBlockShieldEffect = true;
+}
+
+void ULMSWeaponSecondaryAbility::PlayServerSideNonLocalShieldEndMontage(ULMSWeaponComponent* WeaponComponent)
+{
+	if (!bDestroyedServerSideNonLocalBlockShieldEffect || !WeaponComponent || !IsServerSideNonLocalAvatar(nullptr))
+	{
+		return;
+	}
+
+	bDestroyedServerSideNonLocalBlockShieldEffect = false;
+
+	FObjectProperty* ShieldMontageProperty = FindFProperty<FObjectProperty>(GetClass(), TEXT("ThirdPersonShieldMontage"));
+	if (!ShieldMontageProperty)
+	{
+		return;
+	}
+
+	UAnimMontage* ShieldMontage = Cast<UAnimMontage>(ShieldMontageProperty->GetObjectPropertyValue_InContainer(this));
+	if (!ShieldMontage)
+	{
+		return;
+	}
+
+	WeaponComponent->PlayReplicatedThirdPersonWeaponMontage(ShieldMontage, TEXT("shield_end"));
 }

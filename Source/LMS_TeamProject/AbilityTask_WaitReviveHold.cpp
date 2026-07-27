@@ -105,16 +105,14 @@ bool UAbilityTask_WaitReviveHold::ValidateConditions() const
 		return false;
 	}
 
-	// [2] 대상이 여전히 다운 상태(state.Incapacitated)인가
-	UAbilitySystemComponent* TargetASC =
-		UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target);
-	if (!TargetASC || !TargetASC->HasMatchingGameplayTag(
-		FGameplayTag::RequestGameplayTag("state.Incapacitated")))
+	// [2] 어빌리티별 추가 조건 (미주입 시 통과)
+	//     예) Revive는 "대상이 여전히 state.Incapacitated인가"를 주입한다.
+	if (ExtraCondition && !ExtraCondition())
 	{
 		return false;
 	}
 
-	// [3] 벽 막힘 — 시전자와 대상 사이가 가려지면 취소 (불필요하면 이 블록만 제거)
+	// [3] 벽 막힘 — 시전자와 대상 사이가 가려지면 취소
 	if (UWorld* World = GetWorld())
 	{
 		FHitResult Hit;

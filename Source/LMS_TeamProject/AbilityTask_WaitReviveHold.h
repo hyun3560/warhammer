@@ -33,6 +33,9 @@ public:
 
 	virtual void Activate() override;
 
+	/** 어빌리티별 추가 유지 조건 주입 (ReadyForActivation 전에 호출) */
+	void SetExtraCondition(TFunction<bool()> InCondition) { ExtraCondition = MoveTemp(InCondition); }
+
 	// GA가 결과를 받는 통로
 	UPROPERTY(BlueprintAssignable)
 	FReviveHoldEvent OnCompleted;    // 홀드 완주
@@ -56,10 +59,13 @@ protected:
 	UPROPERTY()
 	TObjectPtr<AActor> Target = nullptr;
 
+	TFunction<bool()> ExtraCondition;
+
 	float HoldDuration = 3.0f;   // 완주에 필요한 총 시간
 	float MaxDist = 300.0f;      // 유지 가능한 최대 거리
 	float Interval = 0.1f;       // 검사 주기
 	float Elapsed = 0.0f;        // 누적 시간
+
 
 	FTimerHandle CheckTimerHandle;
 };
