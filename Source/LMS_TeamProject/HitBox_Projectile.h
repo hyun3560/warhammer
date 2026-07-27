@@ -31,6 +31,24 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS")
 	TSubclassOf<UGameplayEffect> DamageEffect;
 
+	// 플레이어가 쏜 발사체가 적에게 줄 데미지 (FireRifleProjectile에서 설정). 적 발사체는 EnemyData->Damage 사용.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
+	float ProjectileDamage = 0.f;
+
+	// 피격(적/플레이어/벽) 시 재생할 임팩트 이펙트. Niagara 우선, 없으면 Cascade 사용. BP 디테일에서 지정.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|FX")
+	class UNiagaraSystem* ImpactEffect = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|FX")
+	class UParticleSystem* ImpactEffectCascade = nullptr;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile|FX")
+	class USoundBase* ImpactSound = nullptr;
+
+	// 모든 클라이언트에서 임팩트 이펙트/사운드 재생 (서버가 피격 시 호출)
+	UFUNCTION(NetMulticast, Unreliable)
+	void Multicast_PlayImpactFX(FVector Location, FRotator Rotation);
+
 	// LaunchToTarget 실패 시 직선 발사 폴백 속도 (ProjectileMovement->InitialSpeed 와 별개)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
 	float InitialSpeed;
@@ -55,4 +73,18 @@ public:
 	UFUNCTION()
 	virtual void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
 		UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+
+	// Pawn(적)을 Block하지 않고 Overlap으로 감지하는 경우용 (플레이어 라이플 발사체)
+	UFUNCTION()
+	virtual void OnBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+private:
+	// Hit/Overlap 공통 피격 처리 (양방향: 적→플레이어, 플레이어→적). 중복 방지 후 데미지 적용.
+	void HandleImpact(AActor* OtherActor);
+
+	// 임팩트 이펙트 멀티캐스트 + 소멸 (서버 전용 호출)
+	void FinishImpact(const FVector& ImpactPoint);
+
+	bool bImpacted = false;
 };

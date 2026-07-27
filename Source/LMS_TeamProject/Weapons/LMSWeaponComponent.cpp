@@ -14,6 +14,8 @@
 #include "GameplayEffect.h"
 #include "Kismet/GameplayStatics.h"
 #include "LMSWeaponBase.h"
+#include "../HitBox_Projectile.h"
+#include "GameFramework/ProjectileMovementComponent.h"
 #include "LMSWeaponPrimaryAbility.h"
 #include "LMSWeaponSecondaryAbility.h"
 #include "LMSWeaponSkillAbility.h"
@@ -64,6 +66,7 @@ bool ULMSWeaponComponent::EquipWeaponFromData(const FWeaponData& WeaponData)
 	CurrentWeapon->SetWeaponData(WeaponData);
 	CurrentWeapon->Equip(OwnerCharacter, EquippedSocketName);
 	RefreshFirstPersonWeaponVisual();
+	ApplyWeaponAnimClass();
 
 	AmmoInMagazine = CurrentWeaponData.MagazineSize;
 	ReserveAmmo = CurrentWeaponData.MaxReserveAmmo;
@@ -362,6 +365,110 @@ void ULMSWeaponComponent::CacheWeaponDataByID(FName WeaponID)
 	CurrentWeaponData = FWeaponData();
 }
 
+void ULMSWeaponComponent::ApplyWeaponAnimClass()
+{
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (!OwnerCharacter)
+	{
+		return;
+	}
+
+	// 3인칭 몸(CharacterMesh0) AnimBP 전환 (비어있으면 기본 유지)
+	if (USkeletalMeshComponent* Mesh = OwnerCharacter->GetMesh())
+	{
+		const TSubclassOf<UAnimInstance> DesiredAnimClass = CurrentWeaponData.ThirdPersonAnimClass;
+		if (DesiredAnimClass && Mesh->GetAnimClass() != DesiredAnimClass)
+		{
+			Mesh->SetAnimInstanceClass(DesiredAnimClass);
+		}
+	}
+
+	// 1인칭 팔(SK_Murdock_FP_Arms) AnimBP 전환 - 로컬 소유 플레이어만 (FP는 자기 화면만)
+	if (OwnerCharacter->IsLocallyControlled() && CurrentWeaponData.FirstPersonAnimClass)
+	{
+		if (USkeletalMeshComponent* FPMesh = Cast<USkeletalMeshComponent>(FindFirstPersonWeaponAttachComponent()))
+		{
+			if (FPMesh->GetAnimClass() != CurrentWeaponData.FirstPersonAnimClass)
+			{
+				FPMesh->SetAnimInstanceClass(CurrentWeaponData.FirstPersonAnimClass);
+			}
+		}
+	}
+}
+
+void ULMSWeaponComponent::FireRifleProjectile(float DamageMultiplier)
+{
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	UWorld* World = GetWorld();
+	if (!OwnerCharacter || !World || !OwnerCharacter->HasAuthority())
+	{
+		return;
+	}
+
+	if (!CurrentWeaponData.ProjectileClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("FireRifleProjectile failed: ProjectileClass not set for %s"), *CurrentWeaponData.WeaponID.ToString());
+		return;
+	}
+
+	const FRotator AimRotation = OwnerCharacter->GetControlRotation();
+	const FVector Direction = AimRotation.Vector();
+
+	// 무기 메시에 Muzzle 소켓이 있으면 그 위치, 없으면 시점 위치에서 발사
+	FVector SpawnLocation = OwnerCharacter->GetPawnViewLocation();
+	if (ALMSWeaponBase* MuzzleWeapon = FirstPersonWeapon ? FirstPersonWeapon : CurrentWeapon)
+	{
+		if (USkeletalMeshComponent* WeaponMesh = MuzzleWeapon->GetWeaponMesh())
+		{
+			if (WeaponMesh->DoesSocketExist(TEXT("Muzzle")))
+			{
+				SpawnLocation = WeaponMesh->GetSocketLocation(TEXT("Muzzle"));
+			}
+		}
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = OwnerCharacter;
+	SpawnParams.Instigator = OwnerCharacter;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	AHitBox_Projectile* Projectile = World->SpawnActor<AHitBox_Projectile>(
+		CurrentWeaponData.ProjectileClass, SpawnLocation, AimRotation, SpawnParams);
+	if (!Projectile)
+	{
+		return;
+	}
+
+	// 쏜 캐릭터/무기와의 즉시 자가 충돌 방지
+	Projectile->SetOwner(OwnerCharacter);
+	if (UPrimitiveComponent* ProjectileRoot = Cast<UPrimitiveComponent>(Projectile->GetRootComponent()))
+	{
+		ProjectileRoot->IgnoreActorWhenMoving(OwnerCharacter, true);
+		if (CurrentWeapon) { ProjectileRoot->IgnoreActorWhenMoving(CurrentWeapon, true); }
+		if (FirstPersonWeapon) { ProjectileRoot->IgnoreActorWhenMoving(FirstPersonWeapon, true); }
+
+		// "Projectile" 프로파일은 Pawn을 Ignore → 적을 통과함.
+		// 플레이어 라이플 발사체는 Pawn(적)을 Overlap으로 감지해서 데미지 적용.
+		ProjectileRoot->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	}
+
+	// 무기 데미지 이펙트 + 데미지값 전달 (BJH 프로젝타일은 DamageEffect로 데미지 적용)
+	if (CurrentWeaponData.DamageEffect)
+	{
+		Projectile->DamageEffect = CurrentWeaponData.DamageEffect;
+	}
+	Projectile->ProjectileDamage = CurrentWeaponData.Damage * DamageMultiplier;
+
+	// 반경/속도 설정 후 조준 방향으로 직선 발사
+	Projectile->InitializeProjectile(CurrentWeaponData.ProjectileRadius, CurrentWeaponData.ProjectileSpeed, CurrentWeaponData.ProjectileSpeed);
+	if (UProjectileMovementComponent* PM = Projectile->GetProjectileMovement())
+	{
+		PM->ProjectileGravityScale = 0.f;   // 총알: 직선 (중력 없음)
+		PM->Velocity = Direction * CurrentWeaponData.ProjectileSpeed;
+		PM->Activate(true);
+	}
+}
+
 float ULMSWeaponComponent::ResolveCurrentWeaponSkillCooldownDuration() const
 {
 	if (!CurrentWeaponData.WeaponSkill)
@@ -422,6 +529,7 @@ void ULMSWeaponComponent::RestartReplicatedSkillCooldownTimer()
 void ULMSWeaponComponent::OnRep_EquippedWeaponID()
 {
 	CacheWeaponDataByID(EquippedWeaponID);
+	ApplyWeaponAnimClass();
 
 	if (CurrentWeapon)
 	{
