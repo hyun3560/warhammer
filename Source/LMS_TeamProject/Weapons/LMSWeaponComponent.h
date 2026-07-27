@@ -249,6 +249,7 @@ protected:
 	void HandleWeaponTraceHit(const FHitResult& Hit, const FVector& TraceStart, const FVector& TraceEnd);
 	float ConsumeWeaponTraceDamageMultiplier(float DamageMultiplier);
 	bool IsValidClientWeaponTraceHit(AActor* HitActor, const FVector& TraceStart, const FVector& TraceEnd) const;
+	void PlayAttackCameraShake();
 	void PlayLocalAttackCameraShake() const;
 	void StartWeaponTraceFireEffect();
 	void StopWeaponTraceFireEffect();
@@ -294,6 +295,9 @@ protected:
 
 	UFUNCTION(Server, Reliable)
 	void ServerEndFirstPersonWeaponTrace();
+
+	UFUNCTION(Client, Unreliable)
+	void ClientPlayAttackCameraShake();
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Weapon")
 	UDataTable* WeaponDataTable;

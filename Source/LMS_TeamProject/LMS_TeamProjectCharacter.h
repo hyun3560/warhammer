@@ -74,6 +74,8 @@ public:
 	UInteractionDetectorComponent* GetInteractionDetector() const { return InteractionDetector; }
 
 	bool IsDead() const { return bIsDead; }
+	TSubclassOf<UCameraShakeBase> GetDamageCameraShakeClass() const { return DamageCameraShake; }
+	float GetDamageCameraShakeScale() const { return DamageCameraShakeScale; }
 
 protected:
 	//~ AActor / APawn

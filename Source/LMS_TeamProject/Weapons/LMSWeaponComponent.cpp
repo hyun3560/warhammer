@@ -27,6 +27,7 @@
 #include "TimerManager.h"
 #include "../LMSDamageLibrary.h"
 #include "../LMSGameplayAbility.h"
+#include "../LMS_TeamProjectCharacter.h"
 
 ULMSWeaponComponent::ULMSWeaponComponent()
 {
@@ -911,7 +912,7 @@ void ULMSWeaponComponent::StartMeleeAttack()
 	}
 
 	RegisterComboInput();
-	PlayLocalAttackCameraShake();
+	PlayAttackCameraShake();
 
 	UE_LOG(
 		LogTemp,
@@ -928,7 +929,7 @@ void ULMSWeaponComponent::StartRangedAttack()
 	}
 
 	FireRangedShot(1.f, 1.f, bDrawDebugRangedTrace);
-	PlayLocalAttackCameraShake();
+	PlayAttackCameraShake();
 
 	UE_LOG(
 		LogTemp,
@@ -1227,15 +1228,53 @@ bool ULMSWeaponComponent::IsValidClientWeaponTraceHit(AActor* HitActor, const FV
 	return ActorDistanceToTrace <= AllowedTraceDistance;
 }
 
-void ULMSWeaponComponent::PlayLocalAttackCameraShake() const
+void ULMSWeaponComponent::PlayAttackCameraShake()
 {
-	if (!AttackCameraShake)
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (!OwnerCharacter)
 	{
 		return;
 	}
 
-	const ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (OwnerCharacter->IsLocallyControlled())
+	{
+		PlayLocalAttackCameraShake();
+		return;
+	}
+
+	if (OwnerCharacter->HasAuthority())
+	{
+		ClientPlayAttackCameraShake();
+	}
+}
+
+void ULMSWeaponComponent::ClientPlayAttackCameraShake_Implementation()
+{
+	PlayLocalAttackCameraShake();
+}
+
+void ULMSWeaponComponent::PlayLocalAttackCameraShake() const
+{
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
 	if (!OwnerCharacter || !OwnerCharacter->IsLocallyControlled())
+	{
+		return;
+	}
+
+	TSubclassOf<UCameraShakeBase> CameraShakeClass = AttackCameraShake;
+	float CameraShakeScale = AttackCameraShakeScale;
+
+	if (!CameraShakeClass)
+	{
+		const ALMS_TeamProjectCharacter* LMSCharacter = Cast<ALMS_TeamProjectCharacter>(OwnerCharacter);
+		if (LMSCharacter)
+		{
+			CameraShakeClass = LMSCharacter->GetDamageCameraShakeClass();
+			CameraShakeScale = LMSCharacter->GetDamageCameraShakeScale();
+		}
+	}
+
+	if (!CameraShakeClass)
 	{
 		return;
 	}
@@ -1246,7 +1285,7 @@ void ULMSWeaponComponent::PlayLocalAttackCameraShake() const
 		return;
 	}
 
-	PlayerController->PlayerCameraManager->StartCameraShake(AttackCameraShake, AttackCameraShakeScale);
+	PlayerController->PlayerCameraManager->StartCameraShake(CameraShakeClass, CameraShakeScale);
 }
 
 void ULMSWeaponComponent::StartWeaponTraceFireEffect()

@@ -346,10 +346,6 @@ void ALMS_TeamProjectCharacter::SetupPlayerInputComponent(UInputComponent* Playe
 		UE_LOG(LogTemplateCharacter, Warning, TEXT("ReloadAction is not assigned on %s."), *GetNameSafe(this));
 	}
 
-	if (PingAction)
-	{
-		EnhancedInputComponent->BindAction(PingAction, ETriggerEvent::Started, this, &ALMS_TeamProjectCharacter::RequestPing);
-	}
 }
 
 void ALMS_TeamProjectCharacter::Input_Jump()
