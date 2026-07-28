@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "LMSWeaponGameplayAbility.h"
@@ -29,7 +29,7 @@ protected:
 	virtual void EndAbility(
 		const FGameplayAbilitySpecHandle Handle,
 		const FGameplayAbilityActorInfo* ActorInfo,
-		const FGameplayAbilityActivationInfo ActivationInfo,
+		const FGameplayAbilityActivationInfo ActivationInfo, 
 		bool bReplicateEndAbility,
 		bool bWasCancelled) override;
 

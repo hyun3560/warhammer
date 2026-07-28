@@ -147,6 +147,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Animation")
 	void StopReplicatedThirdPersonWeaponMontage(UAnimMontage* Montage, float BlendOutTime = 0.15f);
 
+	// 1인칭 팔(SK_Murdock_FP_Arms)에 몽타주 재생 — 로컬 소유 플레이어 화면 전용 (복제 없음)
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Animation")
+	void PlayFirstPersonWeaponMontage(UAnimMontage* Montage, FName SectionName = NAME_None, float PlayRate = 1.f);
+
+	UFUNCTION(BlueprintCallable, Category = "Weapon|Animation")
+	void StopFirstPersonWeaponMontage(UAnimMontage* Montage, float BlendOutTime = 0.15f);
+
 	// CurrentWeaponData.ProjectileClass를 Spawn하여 조준 방향으로 직선 발사 (Projectile 기반 라이플 발사)
 	UFUNCTION(BlueprintCallable, Category = "Weapon|Ranged")
 	void FireRifleProjectile(float DamageMultiplier);

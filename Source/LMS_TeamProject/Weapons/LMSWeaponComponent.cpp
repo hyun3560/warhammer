@@ -1336,6 +1336,72 @@ void ULMSWeaponComponent::StopThirdPersonWeaponMontageLocal(UAnimMontage* Montag
 	}
 }
 
+void ULMSWeaponComponent::PlayFirstPersonWeaponMontage(UAnimMontage* Montage, FName SectionName, float PlayRate)
+{
+	if (!Montage)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FP Montage] Montage is null"));
+		return;
+	}
+
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	// 1인칭 팔은 로컬 소유 플레이어 화면에만 존재/표시된다.
+	if (!OwnerCharacter || !OwnerCharacter->IsLocallyControlled())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FP Montage] Not locally controlled (Owner=%s)"), *GetNameSafe(OwnerCharacter));
+		return;
+	}
+
+	USkeletalMeshComponent* FPMesh = Cast<USkeletalMeshComponent>(FindFirstPersonWeaponAttachComponent());
+	if (!FPMesh)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FP Montage] FP arm mesh not found (attach name='%s')"), *FirstPersonWeaponAttachComponentName.ToString());
+		return;
+	}
+
+	UAnimInstance* AnimInstance = FPMesh->GetAnimInstance();
+	if (!AnimInstance)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[FP Montage] FP mesh '%s' has NO AnimInstance (AnimBP not assigned?)"), *FPMesh->GetName());
+		return;
+	}
+
+	const float MontageLength = AnimInstance->Montage_Play(Montage, PlayRate);
+	UE_LOG(LogTemp, Warning, TEXT("[FP Montage] Montage_Play('%s') returned length=%.3f on mesh '%s'"),
+		*Montage->GetName(), MontageLength, *FPMesh->GetName());
+
+	if (MontageLength > 0.f && !SectionName.IsNone())
+	{
+		AnimInstance->Montage_JumpToSection(SectionName, Montage);
+	}
+}
+
+void ULMSWeaponComponent::StopFirstPersonWeaponMontage(UAnimMontage* Montage, float BlendOutTime)
+{
+	if (!Montage)
+	{
+		return;
+	}
+
+	ACharacter* OwnerCharacter = GetOwnerCharacter();
+	if (!OwnerCharacter || !OwnerCharacter->IsLocallyControlled())
+	{
+		return;
+	}
+
+	USkeletalMeshComponent* FPMesh = Cast<USkeletalMeshComponent>(FindFirstPersonWeaponAttachComponent());
+	if (!FPMesh)
+	{
+		return;
+	}
+
+	UAnimInstance* AnimInstance = FPMesh->GetAnimInstance();
+	if (AnimInstance && AnimInstance->Montage_IsPlaying(Montage))
+	{
+		AnimInstance->Montage_Stop(BlendOutTime, Montage);
+	}
+}
+
 void ULMSWeaponComponent::ReplicateThirdPersonWeaponMontage(UAnimMontage* Montage, FName SectionName, float PlayRate)
 {
 	ACharacter* OwnerCharacter = GetOwnerCharacter();
